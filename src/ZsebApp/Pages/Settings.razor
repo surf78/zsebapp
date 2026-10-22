@@ -60,7 +60,7 @@
                 <strong>@pendingImport.Notes.Count</strong> jegyzet,
                 <strong>@pendingImport.Expenses.Count</strong> kiadás,
                 <strong>@pendingImport.Bills.Count</strong> számla és
-                <strong>@pendingImport.Meters.Count</strong> mérőóra-leolvasás van.
+                <strong>@pendingImport.Meters.Count</strong> mérőóra-leolvasás van@(pendingImport.BillTemplates is { } bt ? $", valamint {bt.Count} fix számlatétel" : "").
                 A visszaállítás <strong>felülírja</strong> a jelenlegi adatokat.
             </p>
             <div class="btn-row">
@@ -75,26 +75,67 @@
         <p class="hint">@message</p>
     }
 
-    <p class="section-label">Veszélyzóna</p>
-    <section class="card actions">
-        @if (!confirmClear)
+    <p class="section-label">Törlési jelszó</p>
+    <section class="card form">
+        @if (Data.HasDeletePassword)
         {
-            <button class="action danger" @onclick="() => confirmClear = true">
-                <Icon Name="trash" Size="20" />
-                <span>Minden adat törlése</span>
-            </button>
+            <p class="form-note">A „Minden adat törlése” jelszóval védett. Módosításhoz add meg a jelenlegi jelszót.</p>
+            <input class="input" type="password" placeholder="Jelenlegi jelszó" autocomplete="current-password" @bind="pwOld" @bind:event="oninput" />
         }
         else
         {
-            <div class="confirm">
-                <p>Biztosan törölsz mindent? Ez nem vonható vissza.</p>
-                <div class="btn-row">
-                    <button class="btn" @onclick="() => confirmClear = false">Mégse</button>
-                    <button class="btn danger" @onclick="ClearAll">Igen, törlés</button>
+            <p class="form-note">Állíts be jelszót – enélkül a „Minden adat törlése” nem használható.</p>
+        }
+        <input class="input" type="password" placeholder="Új jelszó (min. 4 karakter)" autocomplete="new-password" @bind="pwNew" @bind:event="oninput" />
+        <input class="input" type="password" placeholder="Új jelszó még egyszer" autocomplete="new-password" @bind="pwNew2" @bind:event="oninput" />
+        @if (pwMessage is not null)
+        {
+            <p class="@(pwOk ? "form-note ok" : "error")">@pwMessage</p>
+        }
+        <button class="btn primary block" @onclick="SavePassword">@(Data.HasDeletePassword ? "Jelszó módosítása" : "Jelszó beállítása")</button>
+    </section>
+
+    <p class="section-label">Veszélyzóna</p>
+    <section class="card actions">
+        @switch (clearStep)
+        {
+            case ClearStep.None:
+                <button class="action danger" @onclick="StartClear">
+                    <Icon Name="trash" Size="20" />
+                    <span>Minden adat törlése</span>
+                </button>
+                break;
+
+            case ClearStep.Password:
+                <div class="confirm">
+                    <p>Add meg a törlési jelszót:</p>
+                    <input class="input" type="password" placeholder="Jelszó" autocomplete="current-password" @bind="clearPassword" @bind:event="oninput" />
+                    @if (clearError is not null)
+                    {
+                        <p class="error">@clearError</p>
+                    }
+                    <div class="btn-row">
+                        <button class="btn" @onclick="CancelClear">Mégse</button>
+                        <button class="btn primary" @onclick="CheckClearPassword">Tovább</button>
+                    </div>
                 </div>
-            </div>
+                break;
+
+            case ClearStep.Confirm:
+                <div class="confirm">
+                    <p><strong>Biztosan törölni szeretnéd az összes adatot?</strong> A teendők, jegyzetek, kiadások, számlák és mérőállások véglegesen törlődnek. Ez nem vonható vissza.</p>
+                    <div class="btn-row">
+                        <button class="btn" @onclick="CancelClear">Mégse</button>
+                        <button class="btn danger" @onclick="ClearAll">Igen, törlés</button>
+                    </div>
+                </div>
+                break;
         }
     </section>
+    @if (clearError is not null && clearStep == ClearStep.None)
+    {
+        <p class="hint">@clearError</p>
+    }
 
     <p class="section-label">Telepítés iPhone-ra</p>
     <section class="card text-card">
@@ -111,7 +152,6 @@
 
 @code {
     private Backup? pendingImport;
-    private bool confirmClear;
     private string? message;
 
     protected override Task OnInitializedAsync() => Data.EnsureLoadedAsync();
@@ -161,10 +201,81 @@
         message = "Visszaállítás kész.";
     }
 
+    // ---------- Törlési jelszó ----------
+
+    private enum ClearStep { None, Password, Confirm }
+
+    private ClearStep clearStep = ClearStep.None;
+    private string clearPassword = "";
+    private string? clearError;
+
+    private string pwOld = "";
+    private string pwNew = "";
+    private string pwNew2 = "";
+    private string? pwMessage;
+    private bool pwOk;
+
+    private async Task SavePassword()
+    {
+        pwOk = false;
+        if (Data.HasDeletePassword && !Data.CheckDeletePassword(pwOld))
+        {
+            pwMessage = "A jelenlegi jelszó nem megfelelő.";
+            return;
+        }
+        if (pwNew.Length < 4)
+        {
+            pwMessage = "Az új jelszó legalább 4 karakter legyen.";
+            return;
+        }
+        if (pwNew != pwNew2)
+        {
+            pwMessage = "A két új jelszó nem egyezik.";
+            return;
+        }
+
+        await Data.SetDeletePasswordAsync(pwNew);
+        pwOld = pwNew = pwNew2 = "";
+        pwOk = true;
+        pwMessage = "Jelszó elmentve.";
+    }
+
+    private void StartClear()
+    {
+        clearError = null;
+        clearPassword = "";
+        if (!Data.HasDeletePassword)
+        {
+            clearError = "Előbb állíts be törlési jelszót (fent, a Törlési jelszó résznél).";
+            return;
+        }
+        clearStep = ClearStep.Password;
+    }
+
+    private void CheckClearPassword()
+    {
+        if (!Data.CheckDeletePassword(clearPassword))
+        {
+            clearError = "Hibás jelszó.";
+            return;
+        }
+        clearError = null;
+        clearPassword = "";
+        clearStep = ClearStep.Confirm;
+    }
+
+    private void CancelClear()
+    {
+        clearStep = ClearStep.None;
+        clearPassword = "";
+        clearError = null;
+    }
+
     private async Task ClearAll()
     {
+        if (clearStep != ClearStep.Confirm) return;
         await Data.ClearAllAsync();
-        confirmClear = false;
+        clearStep = ClearStep.None;
         message = "Minden adat törölve.";
     }
 }

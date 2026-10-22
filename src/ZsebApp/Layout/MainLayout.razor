@@ -1,9 +1,47 @@
 ﻿@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject AppData Data
 
 <div class="app">
-    <main class="content">
+    @* A @key miatt minden fülváltásnál újraépül, így lejátszódik a csúszó animáció. *@
+    <main class="content @animClass" @key="currentPath">
         @Body
     </main>
+
+    @* Lebegő mikrofon gomb: bárhonnan teendő rögzíthető hanggal („… vége”). A Teendők oldalon saját gomb van. *@
+    @if (!IsTodosPage)
+    {
+        <button type="button" class="voice-fab @(voiceListening ? "listening" : null)" @ref="voiceFab"
+                aria-label="@(voiceListening ? "Felvétel leállítása" : "Teendő rögzítése hanggal")">
+            <Icon Name="@(voiceListening ? "stop" : "mic")" Size="24" />
+        </button>
+    }
+
+    @if (voiceOpen)
+    {
+        <div class="voice-sheet" role="dialog" aria-label="Teendő rögzítése hanggal">
+            <div class="voice-sheet-head">
+                <span class="voice-dot @(voiceListening ? "on" : null)"></span>
+                <strong>@(voiceListening ? "Hallgatlak…" : "Új teendő")</strong>
+            </div>
+            <p class="voice-text">@(string.IsNullOrEmpty(voiceText) ? "Mondd a teendőt, a végén mondd: „vége”." : voiceText)</p>
+            @if (voiceError is not null)
+            {
+                <p class="error">@voiceError</p>
+            }
+            <div class="btn-row">
+                <button type="button" class="btn" @onclick="CancelVoice">Mégse</button>
+                <button type="button" class="btn primary" disabled="@string.IsNullOrWhiteSpace(voiceText)" @onclick="SaveVoice">Mentés</button>
+            </div>
+        </div>
+    }
+
+    @if (toast is not null)
+    {
+        <div class="toast" role="status">@toast</div>
+    }
 
     <nav class="tabbar" aria-label="Fő navigáció">
         <NavLink class="tab" href="" Match="NavLinkMatch.All">
@@ -28,3 +66,173 @@
         </NavLink>
     </nav>
 </div>
+
+@code {
+    /// <summary>A fülek sorrendje (húzásos lapozáshoz).</summary>
+    private static readonly string[] Tabs = ["", "jegyzetek", "kiadasok", "szamlak", "beallitasok"];
+
+    private string? currentPath;
+    private string? animClass;
+
+    private DotNetObjectReference<MainLayout>? selfRef;
+    private ElementReference voiceFab;
+    private bool voiceFabAttached;
+
+    private bool voiceOpen;
+    private bool voiceListening;
+    private string voiceText = "";
+    private string? voiceError;
+    private string? toast;
+    private CancellationTokenSource? toastCts;
+
+    private bool IsTodosPage => TabIndex(currentPath ?? "") == 0;
+
+    /// <summary>Az útvonalhoz tartozó fül indexe; az alnézetek (pl. szamlak/merok) a szülő fülhöz tartoznak.</summary>
+    public static int TabIndex(string path)
+    {
+        path = path.Split('?', '#')[0].Trim('/');
+        if (path is "" or "index.html") return 0;
+        var first = path.Split('/')[0];
+        return Array.IndexOf(Tabs, first);
+    }
+
+    protected override void OnParametersSet()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+        if (path == currentPath) return;
+
+        int from = currentPath is null ? -1 : TabIndex(currentPath), to = TabIndex(path);
+        animClass = from < 0 || to < 0 || from == to ? null : to > from ? "slide-from-right" : "slide-from-left";
+        currentPath = path;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("zseb.swipe.attach", selfRef);
+        }
+
+        // A lebegő gomb a Teendők oldalon eltűnik, máshol újra megjelenik – ilyenkor újra kell csatolni.
+        if (!IsTodosPage && !voiceFabAttached && selfRef is not null)
+        {
+            voiceFabAttached = true;
+            await JS.InvokeVoidAsync("zseb.speech.attach", voiceFab, selfRef, SpeechText.Language, SpeechText.StopWord);
+        }
+        else if (IsTodosPage && voiceFabAttached)
+        {
+            voiceFabAttached = false;
+        }
+    }
+
+    // ---------- Húzásos lapozás ----------
+
+    [JSInvokable]
+    public void OnSwipe(int direction)
+    {
+        var index = TabIndex(currentPath ?? "");
+        if (index < 0) return;
+        var target = index + direction;
+        if (target < 0 || target >= Tabs.Length) return;
+        Nav.NavigateTo(Tabs[target]);
+    }
+
+    // ---------- Hangrögzítés a lebegő gombbal ----------
+
+    [JSInvokable]
+    public void OnSpeechStart()
+    {
+        voiceOpen = true;
+        voiceListening = true;
+        voiceText = "";
+        voiceError = null;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechResult(string text)
+    {
+        voiceText = SpeechText.Clean(text);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechEnd(string text, bool committed)
+    {
+        voiceListening = false;
+        var cleaned = SpeechText.Clean(text);
+        if (cleaned.Length > 0) voiceText = cleaned;
+
+        if (committed && cleaned.Length > 0)
+            await SaveVoice();
+        else if (cleaned.Length == 0 && voiceError is null)
+            voiceOpen = false;
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechError(string code)
+    {
+        voiceListening = false;
+        voiceOpen = true;
+        voiceError = SpeechText.ErrorMessage(code);
+        if (voiceError is null && string.IsNullOrEmpty(voiceText)) voiceOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveVoice()
+    {
+        var title = SpeechText.Clean(voiceText);
+        if (title.Length == 0) return;
+
+        await JS.InvokeVoidAsync("zseb.speech.cancel");
+        await Data.EnsureLoadedAsync();
+        await Data.AddTodoAsync(title);
+        voiceOpen = false;
+        voiceListening = false;
+        voiceText = "";
+        voiceError = null;
+        ShowToast($"Teendő mentve: {title}");
+    }
+
+    private async Task CancelVoice()
+    {
+        await JS.InvokeVoidAsync("zseb.speech.cancel");
+        voiceOpen = false;
+        voiceListening = false;
+        voiceText = "";
+        voiceError = null;
+    }
+
+    private void ShowToast(string text)
+    {
+        toast = text;
+        toastCts?.Cancel();
+        toastCts = new CancellationTokenSource();
+        var token = toastCts.Token;
+        _ = Task.Delay(2500, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            _ = InvokeAsync(() =>
+            {
+                toast = null;
+                StateHasChanged();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        toastCts?.Cancel();
+        try
+        {
+            await JS.InvokeVoidAsync("zseb.speech.cancel");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        selfRef?.Dispose();
+    }
+}

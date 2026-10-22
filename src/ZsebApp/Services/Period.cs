@@ -58,7 +58,7 @@ public readonly record struct Period(PeriodKind Kind, DateOnly Start, DateOnly E
     {
         PeriodKind.Week =>
             $"{ISOWeek.GetYear(Start.ToDateTime(TimeOnly.MinValue))}. {ISOWeek.GetWeekOfYear(Start.ToDateTime(TimeOnly.MinValue))}. hét",
-        PeriodKind.Month => Fmt.MonthTitle(Start.Year, Start.Month),
+        PeriodKind.Month => BillViews.MonthTitle(Models.BillMonth.Key(Start)),
         PeriodKind.Year => $"{Start.Year}",
         _ => "Teljes időszak",
     };

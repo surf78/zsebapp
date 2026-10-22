@@ -5,6 +5,9 @@ public static class SpeechText
 {
     public const string Language = "hu-HU";
 
+    /// <summary>Ha a mondat ezzel a szóval végződik, a teendő automatikusan mentésre kerül.</summary>
+    public const string StopWord = "vége";
+
     /// <summary>Szóközök rendezése, nagy kezdőbetű, a felismerő által odatett záró pont levágása.</summary>
     public static string Clean(string? text)
     {

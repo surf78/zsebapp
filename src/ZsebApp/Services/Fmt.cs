@@ -77,5 +77,8 @@ public static class Fmt
         return d.Year == today.Year ? ShortDate(d) : $"{d.Year}. {ShortDate(d)}";
     }
 
+    /// <summary>Teljes dátum év-hónap-nap sorrendben: "2026. 10. 22."</summary>
+    public static string FullDate(DateTime t) => t.ToString("yyyy. MM. dd.", CultureInfo.InvariantCulture);
+
     public static string FileStamp(DateTime t) => t.ToString("yyyy-MM-dd_HHmm", CultureInfo.InvariantCulture);
 }

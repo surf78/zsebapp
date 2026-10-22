@@ -4,14 +4,16 @@ Teendők, jegyzetek és kiadáskövető egy appban. C#-ban írt **Blazor WebAsse
 
 ## Funkciók
 
-- **Teendők:** hozzáadás, késznek jelölés, törlés, a kész elemek egy gombbal törölhetők.
-  **Hangalapú rögzítés magyarul:** a mikrofon gombra koppintva mondd ki a feladatot. A szöveg élőben megjelenik a mezőben, ellenőrzés után a + gombbal mented.
+- **Teendők:** hozzáadás (a felvétel dátumával), késznek jelölés, törlés, a kész elemek egy gombbal törölhetők.
+  **Hangalapú rögzítés magyarul:** a mikrofon gombra (vagy bármelyik oldalon a jobb alsó lebegő mikrofon gombra) koppintva mondd ki a feladatot, a végén mondd: „vége” – és automatikusan bekerül a Teendők közé.
+- **Lapozás:** balra / jobbra húzással lehet a fülek között váltani.
 - **Jegyzetek:** lista és szerkesztő automatikus mentéssel.
 - **Kiadások:** összeg, kategória, dátum és megjegyzés rögzítése. Havi összesítő kategóriánkénti sávokkal, napokra bontott lista, hónapváltó.
-- **Számlák:** megnevezés (gyorsgombok: Gázszámla, Villanyszámla, Vízdíj…), összeg és állapot. Az állapot **Rendezetlen** (piros, ez az alapértelmezés) vagy **Fizetve** (zöld), a listában az állapotra koppintva váltható. Fent összesítő mutatja a rendezetlen és a kifizetett összeget.
+- **Számlák:** havi nézet („2026-10 október”), csoportokra bontva. Fix tételek (alapból: Ház (Petróczy), Lakás (Székfű), Rendszeres utalás) minden hónapban kitöltendő sorként jelennek meg; törölhetők, újak vehetők fel („Fix tételek kezelése”, vagy új számlánál „Fix tétel” pipa). Minden számla szerkeszthető (sorra koppintás), van fizetési határidő (a lejárt pirosan jelölve), állapot: Rendezetlen (piros, alapértelmezett) / Fizetve (zöld). Szűrés csoportra és hétre / hónapra / évre.
 - **Mérőórák** (a Számlák fülön, felül a „Mérőórák” gombbal): gáz-, villany- és vízóra-állás rögzítése dátummal és megjegyzéssel. Mutatja az utolsó állást, az előző leolvasás óta eltelt fogyasztást, a napi átlagot és az utolsó 6 időszak fogyasztását. Nem enged a korábbinál kisebb állást beírni.
 - **Számlák szűrése:** a lista fölötti „Szűrés” sávban csoportra (a számla megnevezése, pl. Gázszámla) és időszakra (hét / hónap / év, léptethető) lehet szűrni; az összesítő a szűrt számlákat mutatja. A számlákhoz dátum is megadható.
 - **Riport** (Beállítások → Riport): kiadások és mérőóra-fogyasztás hétre, hónapra, évre vagy a teljes időszakra – összeg, napi átlag, összehasonlítás az előző időszakkal, időbeli és kategóriánkénti bontás. Exportálható CSV-be (Excelben megnyitható).
+- **Minden adat törlése:** jelszóval védett (Beállítások → Törlési jelszó), utána még egyszer rákérdez.
 - **Beállítások:** mentés JSON-fájlba (iPhone-on a megosztási lapon a „Mentés a Fájlokba” választható), visszaállítás fájlból, minden adat törlése.
 - Az app offline is működik, és támogatja a sötét módot. Az adatok a telefonon maradnak (localStorage).
 

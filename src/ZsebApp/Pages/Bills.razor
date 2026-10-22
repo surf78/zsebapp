@@ -5,286 +5,518 @@
 
 <header class="topbar">
     <h1>Számlák</h1>
-    <button class="icon-btn primary" @onclick="ToggleForm" aria-label="Új számla" aria-expanded="@(showForm ? "true" : "false")">
-        <Icon Name="plus" Class="@(showForm ? "rotate-45" : null)" />
+    <button class="icon-btn primary" @onclick="ToggleNew" aria-label="Új számla" aria-expanded="@(editorOpen ? "true" : "false")">
+        <Icon Name="plus" Class="@(editorOpen ? "rotate-45" : null)" />
     </button>
 </header>
 
 <div class="page">
     <BillsSubNav />
 
-    @if (showForm)
+    @if (!loaded)
     {
-        <form class="card form" @onsubmit="Add">
-            <label class="field">
-                <span>Megnevezés</span>
-                <input class="input" placeholder="pl. Gázszámla" maxlength="80" @bind="name" @bind:event="oninput" />
-            </label>
-            <div class="chips">
-                @foreach (var preset in BillPresets.Names)
-                {
-                    <button type="button" class="chip neutral @(preset == name ? "selected" : null)" @onclick="() => name = preset">
-                        @preset
-                    </button>
-                }
-            </div>
+    }
+    else
+    {
+        @if (editorOpen)
+        {
+            <form class="card form" @onsubmit="Save">
+                <p class="form-title">@EditorTitle</p>
 
-            <div class="field-row">
-                <label class="field grow">
+                <div class="field">
+                    <span>Csoport</span>
+                    <div class="chips">
+                        @foreach (var g in AllGroups)
+                        {
+                            <button type="button" class="chip neutral @(!fNewGroupMode && Same(g, fGroup) ? "selected" : null)"
+                                    @onclick="() => { fGroup = g; fNewGroupMode = false; }">
+                                @g
+                            </button>
+                        }
+                        <button type="button" class="chip neutral @(fNewGroupMode ? "selected" : null)" @onclick="() => fNewGroupMode = true">
+                            + Új csoport
+                        </button>
+                    </div>
+                    @if (fNewGroupMode)
+                    {
+                        <input class="input" placeholder="Új csoport neve, pl. Nyaraló" maxlength="40" @bind="fNewGroup" @bind:event="oninput" />
+                    }
+                </div>
+
+                <label class="field">
+                    <span>Megnevezés</span>
+                    <input class="input" placeholder="pl. Gázszámla" maxlength="80" @bind="fName" @bind:event="oninput" />
+                </label>
+
+                <label class="field">
                     <span>Összeg (Ft)</span>
                     <input class="input amount-input" type="text" inputmode="numeric" pattern="[0-9 ]*"
-                           placeholder="0" maxlength="12" @bind="amountText" @bind:event="oninput" />
+                           placeholder="0" maxlength="12" @bind="fAmount" @bind:event="oninput" />
                 </label>
-                <label class="field">
-                    <span>Dátum</span>
-                    <input class="input date-input" type="date" @bind="date" @bind:format="yyyy-MM-dd" />
-                </label>
-            </div>
 
-            <div class="field">
-                <span>Állapot</span>
-                <div class="segmented" role="radiogroup" aria-label="Állapot">
-                    <button type="button" role="radio" aria-checked="@(!paid ? "true" : "false")"
-                            class="seg unpaid @(!paid ? "selected" : null)" @onclick="() => paid = false">
-                        Rendezetlen
-                    </button>
-                    <button type="button" role="radio" aria-checked="@(paid ? "true" : "false")"
-                            class="seg paid @(paid ? "selected" : null)" @onclick="() => paid = true">
-                        Fizetve
-                    </button>
+                <div class="field-row">
+                    <label class="field grow">
+                        <span>Fizetési határidő</span>
+                        <input class="input date-input" type="date" @bind="fDue" @bind:format="yyyy-MM-dd" />
+                    </label>
+                    <label class="field">
+                        <span>Hónap</span>
+                        <input class="input date-input" type="month" value="@fMonth" @onchange="e => fMonth = e.Value?.ToString() ?? fMonth" />
+                    </label>
                 </div>
-            </div>
 
-            @if (error is not null)
-            {
-                <p class="error">@error</p>
-            }
-
-            <button type="submit" class="btn primary block">Mentés</button>
-        </form>
-    }
-
-    @if (loaded)
-    {
-        var filtered = Filtered;
-        var unpaid = filtered.Where(b => !b.Paid).OrderByDescending(b => b.EffectiveDate).ThenByDescending(b => b.CreatedAt).ToList();
-        var paidList = filtered.Where(b => b.Paid).OrderByDescending(b => b.EffectiveDate).ThenByDescending(b => b.PaidAt ?? b.CreatedAt).ToList();
-
-        @if (Data.Bills.Count > 0)
-        {
-            <section class="card filter-card">
-                <button type="button" class="filter-toggle" @onclick="() => showFilter = !showFilter" aria-expanded="@(showFilter ? "true" : "false")">
-                    <Icon Name="filter" Size="18" />
-                    <span class="filter-summary">@FilterSummary</span>
-                    @if (IsFiltered)
-                    {
-                        <span class="filter-badge">szűrve</span>
-                    }
-                    <Icon Name="chevron-down" Size="18" Class="@(showFilter ? "rotate-180" : null)" />
-                </button>
-
-                @if (showFilter)
-                {
-                    <div class="filter-body">
-                        <span class="filter-label">Időszak</span>
-                        <PeriodPicker Value="period" ValueChanged="SetPeriod" />
-
-                        <span class="filter-label">Csoport</span>
-                        <div class="chips">
-                            <button type="button" class="chip neutral @(group is null ? "selected" : null)" @onclick="() => group = null">
-                                Mind
-                            </button>
-                            @foreach (var g in Groups)
-                            {
-                                <button type="button" class="chip neutral @(SameGroup(g, group) ? "selected" : null)" @onclick="() => group = g">
-                                    @g
-                                </button>
-                            }
-                        </div>
-
-                        @if (IsFiltered)
-                        {
-                            <button type="button" class="link-btn" @onclick="ClearFilter">Szűrés törlése</button>
-                        }
+                <div class="field">
+                    <span>Állapot</span>
+                    <div class="segmented" role="radiogroup" aria-label="Állapot">
+                        <button type="button" role="radio" aria-checked="@(!fPaid ? "true" : "false")"
+                                class="seg unpaid @(!fPaid ? "selected" : null)" @onclick="() => fPaid = false">
+                            Rendezetlen
+                        </button>
+                        <button type="button" role="radio" aria-checked="@(fPaid ? "true" : "false")"
+                                class="seg paid @(fPaid ? "selected" : null)" @onclick="() => fPaid = true">
+                            Fizetve
+                        </button>
                     </div>
+                </div>
+
+                @if (editing is null && fromTemplate is null)
+                {
+                    <label class="check-row">
+                        <input type="checkbox" @bind="fRecurring" />
+                        <span>Fix tétel – minden hónapban jelenjen meg</span>
+                    </label>
                 }
-            </section>
+
+                @if (fError is not null)
+                {
+                    <p class="error">@fError</p>
+                }
+
+                <button type="submit" class="btn primary block">Mentés</button>
+                <div class="btn-row">
+                    @if (editing is not null)
+                    {
+                        <button type="button" class="btn danger" @onclick="DeleteEditing">Törlés</button>
+                    }
+                    <button type="button" class="btn" @onclick="CloseEditor">Mégse</button>
+                </div>
+            </form>
         }
+
+        <section class="card filter-body report-period">
+            <PeriodPicker Value="period" ValueChanged="SetPeriod" />
+            <div class="chips chips-scroll">
+                <button type="button" class="chip neutral @(group is null ? "selected" : null)" @onclick="() => group = null">Mind</button>
+                @foreach (var g in AllGroups)
+                {
+                    <button type="button" class="chip neutral @(Same(g, group) ? "selected" : null)" @onclick="() => group = g">@g</button>
+                }
+            </div>
+        </section>
+
+        var months = Views;
+        var allRows = months.SelectMany(m => m.Rows).ToList();
+        var unpaidRows = allRows.Where(r => !r.Paid).ToList();
+        var paidRows = allRows.Where(r => r.Paid).ToList();
 
         <section class="bill-summary">
             <div class="card bill-total unpaid">
                 <span class="bill-total-label">Rendezetlen</span>
-                <span class="bill-total-value">@Fmt.Ft(unpaid.Sum(b => (long)b.Amount))</span>
-                <span class="bill-total-sub">@unpaid.Count db</span>
+                <span class="bill-total-value">@Fmt.Ft(unpaidRows.Sum(r => (long)r.Amount))</span>
+                <span class="bill-total-sub">@unpaidRows.Count db@(unpaidRows.Any(r => r.IsOverdue) ? $" · {unpaidRows.Count(r => r.IsOverdue)} lejárt" : "")</span>
             </div>
             <div class="card bill-total paid">
                 <span class="bill-total-label">Fizetve</span>
-                <span class="bill-total-value">@Fmt.Ft(paidList.Sum(b => (long)b.Amount))</span>
-                <span class="bill-total-sub">@paidList.Count db</span>
+                <span class="bill-total-value">@Fmt.Ft(paidRows.Sum(r => (long)r.Amount))</span>
+                <span class="bill-total-sub">@paidRows.Count db</span>
             </div>
         </section>
 
-        @if (Data.Bills.Count == 0)
+        @if (allRows.Count == 0)
         {
-            <EmptyState IconName="receipt" Title="Nincs számla" Text="A + gombbal rögzíthetsz újat, pl. Gázszámla." />
+            <EmptyState IconName="receipt" Title="Nincs számla" Text="Ebben az időszakban / csoportban nincs számla. A + gombbal vehetsz fel újat." />
         }
-        else if (filtered.Count == 0)
+
+        @foreach (var m in months)
         {
-            <EmptyState IconName="filter" Title="Nincs találat" Text="Ebben az időszakban / csoportban nincs számla." />
-        }
-        else
-        {
-            @if (unpaid.Count > 0)
+            <h2 class="month-header">@m.Title</h2>
+            @foreach (var g in m.Groups)
             {
-                <p class="section-label">Rendezetlen</p>
+                <p class="section-label">
+                    <span>@g.Name</span>
+                    <span>@g.PaidCount/@g.Rows.Count fizetve</span>
+                </p>
                 <ul class="card list">
-                    @foreach (var b in unpaid)
+                    @foreach (var r in g.Rows)
                     {
-                        @BillRow(b)
+                        <li class="row bill-row @(r.IsVirtual ? "virtual" : null)" @key="r.Key">
+                            <div class="row-main tappable-area" @onclick="() => OpenRow(r, m.MonthKey)">
+                                <div class="bill-name">@r.Name</div>
+                                <div class="row-sub">
+                                    @if (r.IsOverdue)
+                                    {
+                                        <span class="overdue">lejárt: @Fmt.TinyDate(r.DueDate!.Value)</span>
+                                    }
+                                    else if (r.DueDate is { } due)
+                                    {
+                                        <span>határidő: @Fmt.TinyDate(due)</span>
+                                    }
+                                    @if (r.IsVirtual)
+                                    {
+                                        <span class="muted">@(r.DueDate is null ? "még nincs rögzítve" : "· még nincs rögzítve")</span>
+                                    }
+                                    else if (r.Paid && r.Bill!.PaidAt is { } paidAt)
+                                    {
+                                        <span>fizetve: @Fmt.TinyDate(DateOnly.FromDateTime(paidAt))</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="bill-right">
+                                <span class="amount">@(r.Amount > 0 ? Fmt.Ft(r.Amount) : "– Ft")</span>
+                                <button class="status-pill @(r.Paid ? "paid" : "unpaid")" @onclick="() => TogglePaid(r, m.MonthKey)"
+                                        aria-label="@(r.Paid ? "Fizetve – koppints a Rendezetlenre váltáshoz" : "Rendezetlen – koppints a Fizetvére váltáshoz")">
+                                    @(r.Paid ? "Fizetve" : "Rendezetlen")
+                                </button>
+                            </div>
+                        </li>
                     }
                 </ul>
             }
-
-            @if (paidList.Count > 0)
-            {
-                <p class="section-label">Fizetve</p>
-                <ul class="card list">
-                    @foreach (var b in paidList)
-                    {
-                        @BillRow(b)
-                    }
-                </ul>
-            }
-
-            <p class="hint">Az állapotra koppintva válthatsz Rendezetlen és Fizetve között.</p>
         }
+
+        @if (allRows.Count > 0)
+        {
+            <p class="hint">A sorra koppintva szerkesztheted a számlát, az állapotra koppintva Rendezetlen és Fizetve között válthatsz.</p>
+        }
+
+        @* ---------- Fix tételek kezelése ---------- *@
+        <section class="card templates-card">
+            <button type="button" class="filter-toggle" @onclick="() => showTemplates = !showTemplates" aria-expanded="@(showTemplates ? "true" : "false")">
+                <Icon Name="list" Size="18" />
+                <span class="filter-summary">Fix tételek kezelése (@Data.BillTemplates.Count)</span>
+                <Icon Name="chevron-down" Size="18" Class="@(showTemplates ? "rotate-180" : null)" />
+            </button>
+
+            @if (showTemplates)
+            {
+                <div class="filter-body">
+                    @foreach (var g in Data.BillTemplates.GroupBy(t => t.Group))
+                    {
+                        <span class="filter-label">@g.Key</span>
+                        <ul class="list template-list">
+                            @foreach (var t in g)
+                            {
+                                <li class="row" @key="t.Id">
+                                    <div class="row-main">
+                                        <div class="bill-name">@t.Name</div>
+                                        <div class="row-sub">
+                                            <span>@(t.DefaultAmount is { } a ? Fmt.Ft(a) : "változó összeg")</span>
+                                            @if (t.DueDay is { } dd)
+                                            {
+                                                <span>· határidő: minden hó @(dd).</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <button class="icon-btn ghost" @onclick="() => DeleteTemplate(t)" aria-label="Fix tétel törlése">
+                                        <Icon Name="trash" Size="20" />
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    <span class="filter-label">Új fix tétel</span>
+                    <div class="chips">
+                        @foreach (var g in AllGroups)
+                        {
+                            <button type="button" class="chip neutral @(!tNewGroupMode && Same(g, tGroup) ? "selected" : null)"
+                                    @onclick="() => { tGroup = g; tNewGroupMode = false; }">
+                                @g
+                            </button>
+                        }
+                        <button type="button" class="chip neutral @(tNewGroupMode ? "selected" : null)" @onclick="() => tNewGroupMode = true">+ Új csoport</button>
+                    </div>
+                    @if (tNewGroupMode)
+                    {
+                        <input class="input" placeholder="Új csoport neve" maxlength="40" @bind="tNewGroup" @bind:event="oninput" />
+                    }
+                    <input class="input" placeholder="Megnevezés, pl. Internet" maxlength="80" @bind="tName" @bind:event="oninput" />
+                    <div class="field-row">
+                        <input class="input" inputmode="numeric" placeholder="Összeg (nem kötelező)" maxlength="12" @bind="tAmount" @bind:event="oninput" />
+                        <input class="input small-input" inputmode="numeric" placeholder="Határidő napja" maxlength="2" @bind="tDueDay" @bind:event="oninput" />
+                    </div>
+                    @if (tError is not null)
+                    {
+                        <p class="error">@tError</p>
+                    }
+                    <button type="button" class="btn primary block" @onclick="AddTemplate">Fix tétel hozzáadása</button>
+                    <p class="report-note">A törölt fix tétel kitöltendő sorként már nem jelenik meg; a korábban rögzített számlái megmaradnak.</p>
+                </div>
+            }
+        </section>
     }
 </div>
 
 @code {
     private bool loaded;
-    private bool showForm;
-    private bool showFilter;
+    private bool showTemplates;
 
-    // Szűrés
-    private Period period = Period.All;
+    // Szűrés: alapból az aktuális hónap
+    private Period period = Period.Containing(PeriodKind.Month, Period.Today);
     private string? group;
 
-    // Űrlap
-    private string name = "";
-    private string amountText = "";
-    private DateOnly date = DateOnly.FromDateTime(DateTime.Now);
-    private bool paid; // alapértelmezés: Rendezetlen
-    private string? error;
+    // Szerkesztő
+    private bool editorOpen;
+    private Bill? editing;
+    private BillTemplate? fromTemplate;
+    private string fGroup = BillDefaults.OtherGroup;
+    private bool fNewGroupMode;
+    private string fNewGroup = "";
+    private string fName = "";
+    private string fAmount = "";
+    private DateOnly? fDue;
+    private string fMonth = BillMonth.Key(Period.Today);
+    private bool fPaid;
+    private bool fRecurring;
+    private string? fError;
 
-    private static bool SameGroup(string? a, string? b) =>
+    // Új fix tétel
+    private string tGroup = "";
+    private bool tNewGroupMode;
+    private string tNewGroup = "";
+    private string tName = "";
+    private string tAmount = "";
+    private string tDueDay = "";
+    private string? tError;
+
+    private static bool Same(string? a, string? b) =>
         a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A csoportok a számlák megnevezései (Gázszámla, Villanyszámla…), ábécérendben.</summary>
-    private List<string> Groups =>
-        Data.Bills.Select(b => b.Name.Trim())
-            .Where(n => n.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.Create(System.Globalization.CultureInfo.InvariantCulture, true))
-            .ToList();
+    private List<string> AllGroups => BillViews.Groups(Data.BillTemplates, Data.Bills);
 
-    private List<Bill> Filtered =>
-        Data.Bills.Where(b => period.Contains(b.EffectiveDate) && (group is null || SameGroup(b.Name, group))).ToList();
+    private string ViewMonthKey => period.Kind == PeriodKind.Month ? BillMonth.Key(period.Start) : BillMonth.Key(Period.Today);
 
-    private bool IsFiltered => period.Kind != PeriodKind.All || group is not null;
+    private List<BillMonthView> Views =>
+        period.Kind == PeriodKind.Month
+            ? [BillViews.Month(Data.Bills, Data.BillTemplates, ViewMonthKey, group)]
+            : BillViews.Range(Data.Bills, Data.BillTemplates, period, group);
 
-    private string FilterSummary =>
-        $"{group ?? "Minden csoport"} · {period.Title}";
-
-    private RenderFragment BillRow(Bill b) => @<li class="row" @key="b.Id">
-        <div class="row-main">
-            <div class="bill-name">@b.Name</div>
-            <div class="row-sub">
-                <span>
-                    @Fmt.SmartDate(b.EffectiveDate)
-                    @if (b.Paid && b.PaidAt is { } paidAt)
-                    {
-                        <text> · fizetve: @Fmt.TinyDate(DateOnly.FromDateTime(paidAt))</text>
-                    }
-                </span>
-            </div>
-        </div>
-        <div class="bill-right">
-            <span class="amount">@Fmt.Ft(b.Amount)</span>
-            <button class="status-pill @(b.Paid ? "paid" : "unpaid")" @onclick="() => TogglePaid(b)"
-                    aria-label="@(b.Paid ? "Fizetve – koppints a Rendezetlenre váltáshoz" : "Rendezetlen – koppints a Fizetvére váltáshoz")">
-                @(b.Paid ? "Fizetve" : "Rendezetlen")
-            </button>
-        </div>
-        <button class="icon-btn ghost" @onclick="() => Delete(b)" aria-label="Törlés">
-            <Icon Name="trash" Size="20" />
-        </button>
-    </li>;
+    private string EditorTitle =>
+        editing is not null ? "Számla szerkesztése"
+        : fromTemplate is not null ? $"{fromTemplate.Name} – {BillViews.MonthTitle(fMonth)}"
+        : "Új számla";
 
     protected override async Task OnInitializedAsync()
     {
         await Data.EnsureLoadedAsync();
+        tGroup = AllGroups.FirstOrDefault() ?? BillDefaults.OtherGroup;
         loaded = true;
     }
 
     private void SetPeriod(Period p) => period = p;
 
-    private void ClearFilter()
+    private static int? ParseAmount(string text)
     {
-        period = Period.All;
-        group = null;
+        var digits = new string((text ?? "").Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var v) ? v : null;
     }
 
-    private void ToggleForm()
+    // ---------- Szerkesztő ----------
+
+    private void ResetEditor()
     {
-        showForm = !showForm;
-        error = null;
+        editing = null;
+        fromTemplate = null;
+        fGroup = group ?? BillDefaults.OtherGroup;
+        fNewGroupMode = false;
+        fNewGroup = "";
+        fName = "";
+        fAmount = "";
+        fDue = null;
+        fMonth = ViewMonthKey;
+        fPaid = false;
+        fRecurring = false;
+        fError = null;
     }
 
-    private async Task Add()
+    private void ToggleNew()
     {
-        var trimmed = name.Trim();
-        if (trimmed.Length == 0)
+        if (editorOpen)
         {
-            error = "Add meg a számla nevét.";
+            CloseEditor();
+            return;
+        }
+        ResetEditor();
+        editorOpen = true;
+    }
+
+    private void CloseEditor()
+    {
+        editorOpen = false;
+        ResetEditor();
+    }
+
+    private void OpenRow(BillRow r, string monthKey)
+    {
+        ResetEditor();
+        if (r.Bill is { } b)
+        {
+            editing = b;
+            fGroup = BillViews.GroupOf(b);
+            fName = b.Name;
+            fAmount = b.Amount > 0 ? b.Amount.ToString() : "";
+            fDue = b.DueDate;
+            fMonth = b.EffectiveMonth;
+            fPaid = b.Paid;
+        }
+        else if (r.Template is { } t)
+        {
+            fromTemplate = t;
+            fGroup = t.Group;
+            fName = t.Name;
+            fAmount = t.DefaultAmount?.ToString() ?? "";
+            fDue = BillViews.TemplateDueDate(t, monthKey);
+            fMonth = monthKey;
+        }
+        editorOpen = true;
+    }
+
+    private async Task Save()
+    {
+        var groupName = (fNewGroupMode ? fNewGroup : fGroup).Trim();
+        if (groupName.Length == 0)
+        {
+            fError = "Add meg a csoport nevét.";
             return;
         }
 
-        var digits = new string(amountText.Where(char.IsDigit).ToArray());
-        if (!int.TryParse(digits, out var amount) || amount <= 0)
+        var name = fName.Trim();
+        if (name.Length == 0)
         {
-            error = "Adj meg egy 0-nál nagyobb összeget.";
+            fError = "Add meg a számla nevét.";
             return;
         }
 
-        Data.Bills.Add(new Bill
+        if (ParseAmount(fAmount) is not { } amount || amount <= 0)
         {
-            Name = trimmed,
-            Amount = amount,
-            Date = date,
-            Paid = paid,
-            PaidAt = paid ? DateTime.Now : null,
-        });
-        await Data.SaveBillsAsync();
+            fError = "Adj meg egy 0-nál nagyobb összeget.";
+            return;
+        }
 
-        name = "";
-        amountText = "";
-        date = DateOnly.FromDateTime(DateTime.Now);
-        paid = false;
-        error = null;
-        showForm = false;
+        if (!BillMonth.TryParse(fMonth ?? "", out _))
+            fMonth = fDue is { } d ? BillMonth.Key(d) : ViewMonthKey;
+
+        var bill = editing ?? new Bill { TemplateId = fromTemplate?.Id };
+        var wasPaid = bill.Paid;
+        bill.Group = groupName == BillDefaults.OtherGroup ? "" : groupName;
+        bill.Name = name;
+        bill.Amount = amount;
+        bill.DueDate = fDue;
+        bill.Month = fMonth;
+        bill.Paid = fPaid;
+        bill.PaidAt = fPaid ? (wasPaid ? bill.PaidAt ?? DateTime.Now : DateTime.Now) : null;
+
+        if (editing is null)
+        {
+            Data.Bills.Add(bill);
+            if (fRecurring && fromTemplate is null)
+            {
+                var template = new BillTemplate { Group = groupName, Name = name, DefaultAmount = amount, DueDay = fDue?.Day };
+                Data.BillTemplates.Add(template);
+                bill.TemplateId = template.Id;
+                await Data.SaveBillTemplatesAsync();
+            }
+        }
+        await Data.SaveBillsAsync();
+        CloseEditor();
     }
 
-    private async Task TogglePaid(Bill b)
+    private async Task DeleteEditing()
     {
-        b.Paid = !b.Paid;
-        b.PaidAt = b.Paid ? DateTime.Now : null;
+        if (editing is null) return;
+        Data.Bills.Remove(editing);
         await Data.SaveBillsAsync();
+        CloseEditor();
     }
 
-    private async Task Delete(Bill b)
+    // ---------- Állapot váltása a listában ----------
+
+    private async Task TogglePaid(BillRow r, string monthKey)
     {
-        Data.Bills.Remove(b);
-        await Data.SaveBillsAsync();
+        if (r.Bill is { } b)
+        {
+            b.Paid = !b.Paid;
+            b.PaidAt = b.Paid ? DateTime.Now : null;
+            await Data.SaveBillsAsync();
+            return;
+        }
+
+        // Még nem rögzített fix tétel: ismert összegnél azonnal fizetettnek jelöljük, különben megnyílik a szerkesztő.
+        if (r.Template is { } t)
+        {
+            if (t.DefaultAmount is > 0)
+            {
+                Data.Bills.Add(new Bill
+                {
+                    TemplateId = t.Id,
+                    Group = t.Group,
+                    Name = t.Name,
+                    Amount = t.DefaultAmount.Value,
+                    DueDate = r.DueDate,
+                    Month = monthKey,
+                    Paid = true,
+                    PaidAt = DateTime.Now,
+                });
+                await Data.SaveBillsAsync();
+            }
+            else
+            {
+                OpenRow(r, monthKey);
+                fPaid = true;
+                fError = "Add meg az összeget, majd mentsd.";
+            }
+        }
+    }
+
+    // ---------- Fix tételek ----------
+
+    private async Task AddTemplate()
+    {
+        var g = (tNewGroupMode ? tNewGroup : tGroup).Trim();
+        var n = tName.Trim();
+        if (g.Length == 0 || n.Length == 0)
+        {
+            tError = "Add meg a csoportot és a megnevezést.";
+            return;
+        }
+
+        int? dueDay = null;
+        if (!string.IsNullOrWhiteSpace(tDueDay))
+        {
+            if (!int.TryParse(tDueDay.Trim(), out var dd) || dd is < 1 or > 31)
+            {
+                tError = "A határidő napja 1 és 31 közötti szám legyen.";
+                return;
+            }
+            dueDay = dd;
+        }
+
+        var amount = ParseAmount(tAmount);
+        Data.BillTemplates.Add(new BillTemplate { Group = g, Name = n, DefaultAmount = amount is > 0 ? amount : null, DueDay = dueDay });
+        await Data.SaveBillTemplatesAsync();
+
+        tName = "";
+        tAmount = "";
+        tDueDay = "";
+        tNewGroup = "";
+        tNewGroupMode = false;
+        tGroup = g;
+        tError = null;
+    }
+
+    private async Task DeleteTemplate(BillTemplate t)
+    {
+        Data.BillTemplates.Remove(t);
+        await Data.SaveBillTemplatesAsync();
     }
 }

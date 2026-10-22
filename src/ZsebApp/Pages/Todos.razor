@@ -31,7 +31,7 @@
 
     @if (listening)
     {
-        <p class="speech-hint listening" role="status">Mondd a feladatot… (koppints a gombra a leállításhoz)</p>
+        <p class="speech-hint listening" role="status">Mondd a feladatot, a végén mondd: „vége” – és elmentem.</p>
     }
     else if (speechHint is not null)
     {
@@ -56,7 +56,10 @@
                             aria-label="@(t.Done ? "Visszaállítás nyitottra" : "Késznek jelöl")">
                         <Icon Name="check" Size="16" />
                     </button>
-                    <span class="row-main" @onclick="() => Toggle(t)">@t.Title</span>
+                    <div class="row-main" @onclick="() => Toggle(t)">
+                        <div>@t.Title</div>
+                        <div class="row-sub"><span>@Fmt.FullDate(t.CreatedAt)</span></div>
+                    </div>
                     <button class="icon-btn ghost" @onclick="() => Delete(t)" aria-label="Törlés">
                         <Icon Name="trash" Size="20" />
                     </button>
@@ -86,14 +89,18 @@
     protected override async Task OnInitializedAsync()
     {
         await Data.EnsureLoadedAsync();
+        Data.TodosChanged += OnTodosChanged;
         loaded = true;
     }
+
+    // A lebegő mikrofon gombbal felvett teendő azonnal megjelenik a listában.
+    private void OnTodosChanged() => InvokeAsync(StateHasChanged);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
         selfRef = DotNetObjectReference.Create(this);
-        await JS.InvokeVoidAsync("zseb.speech.attach", micButton, selfRef, SpeechText.Language);
+        await JS.InvokeVoidAsync("zseb.speech.attach", micButton, selfRef, SpeechText.Language, SpeechText.StopWord);
     }
 
     [JSInvokable]
@@ -113,11 +120,18 @@
     }
 
     [JSInvokable]
-    public void OnSpeechEnd(string text)
+    public async Task OnSpeechEnd(string text, bool committed)
     {
         listening = false;
         var cleaned = SpeechText.Clean(text);
-        if (cleaned.Length > 0)
+        if (committed && cleaned.Length > 0)
+        {
+            // „vége” szóra automatikus mentés
+            await Data.AddTodoAsync(cleaned);
+            newTitle = "";
+            speechHint = $"Mentve: {cleaned}";
+        }
+        else if (cleaned.Length > 0)
         {
             newTitle = cleaned;
             speechHint = "Ellenőrizd a szöveget, majd koppints a + gombra.";
@@ -138,14 +152,14 @@
         var title = newTitle.Trim();
         if (title.Length == 0) return;
 
-        Data.Todos.Add(new TodoItem { Title = title });
         newTitle = "";
         speechHint = null;
-        await Data.SaveTodosAsync();
+        await Data.AddTodoAsync(title);
     }
 
     public async ValueTask DisposeAsync()
     {
+        Data.TodosChanged -= OnTodosChanged;
         try
         {
             await JS.InvokeVoidAsync("zseb.speech.detach", micButton);
