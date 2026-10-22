@@ -761,6 +761,42 @@ a.action { text-decoration: none; }
 .chips-scroll::-webkit-scrollbar { display: none; }
 .chips-scroll .chip { flex: none; }
 
+/* Ház / Lakás csoport kiemelt fejléce */
+.group-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 8px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: var(--glass-strong);
+    border: 1px solid var(--glass-border);
+    border-left: 5px solid var(--group);
+    box-shadow: var(--shadow);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+}
+
+.group-header.house { --group: #ff7a3d; --group-bg: linear-gradient(135deg, #ffb238, #ff7a3d); }
+.group-header.flat { --group: #7b61ff; --group-bg: linear-gradient(135deg, #a18bff, #6a4cf0); }
+
+.group-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: var(--group-bg);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(6, 40, 60, 0.25);
+}
+
+.group-title { display: flex; flex-direction: column; min-width: 0; }
+.group-title strong { font-size: 18px; font-weight: 800; letter-spacing: -0.2px; }
+.group-title small { font-size: 13px; color: var(--muted); }
+
 .tappable-area { cursor: pointer; }
 .tappable-area:active { opacity: 0.6; }
 .bill-row { padding-right: 12px; }

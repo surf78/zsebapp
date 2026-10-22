@@ -142,10 +142,24 @@
             <h2 class="month-header">@m.Title</h2>
             @foreach (var g in m.Groups)
             {
-                <p class="section-label">
-                    <span>@g.Name</span>
-                    <span>@g.PaidCount/@g.Rows.Count fizetve</span>
-                </p>
+                @if (PropertyKind(g.Name) is { } kind)
+                {
+                    @* Ház / Lakás csoport: kiemelt fejléc ikonnal és a rendezetlen összeggel *@
+                    <div class="group-header @kind">
+                        <span class="group-icon"><Icon Name="@(kind == "house" ? "home" : "building")" Size="20" /></span>
+                        <div class="group-title">
+                            <strong>@g.Name</strong>
+                            <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="section-label">
+                        <span>@g.Name</span>
+                        <span>@g.PaidCount/@g.Rows.Count fizetve</span>
+                    </p>
+                }
                 <ul class="card list">
                     @foreach (var r in g.Rows)
                     {
@@ -288,6 +302,12 @@
     private string tAmount = "";
     private string tDueDay = "";
     private string? tError;
+
+    /// <summary>"house" a Ház…, "flat" a Lakás… csoportokra (ezek kiemelt fejlécet kapnak), egyébként null.</summary>
+    private static string? PropertyKind(string group) =>
+        group.StartsWith("Ház", StringComparison.OrdinalIgnoreCase) ? "house"
+        : group.StartsWith("Lakás", StringComparison.OrdinalIgnoreCase) ? "flat"
+        : null;
 
     private static bool Same(string? a, string? b) =>
         a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
