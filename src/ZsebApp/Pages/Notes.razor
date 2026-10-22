@@ -1,0 +1,115 @@
+@page "/jegyzetek"
+@inject AppData Data
+
+<PageTitle>Jegyzetek – ZsebApp</PageTitle>
+
+@if (editing is null)
+{
+    <header class="topbar">
+        <h1>Jegyzetek</h1>
+        <button class="icon-btn primary" @onclick="New" aria-label="Új jegyzet">
+            <Icon Name="plus" />
+        </button>
+    </header>
+
+    <div class="page">
+        @if (!loaded)
+        {
+        }
+        else if (Data.Notes.Count == 0)
+        {
+            <EmptyState IconName="note" Title="Nincs jegyzet" Text="A + gombbal hozhatsz létre újat." />
+        }
+        else
+        {
+            <ul class="card list">
+                @foreach (var n in Data.Notes.OrderByDescending(n => n.UpdatedAt))
+                {
+                    <li class="row tappable" @key="n.Id" @onclick="() => Open(n)">
+                        <div class="row-main">
+                            <div class="note-title">@(string.IsNullOrWhiteSpace(n.Title) ? "Névtelen jegyzet" : n.Title)</div>
+                            <div class="row-sub">
+                                <span>@Fmt.Updated(n.UpdatedAt)</span>
+                                <span class="preview">@Preview(n.Body)</span>
+                            </div>
+                        </div>
+                        <Icon Name="chevron-right" Size="18" Class="muted" />
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+else
+{
+    <header class="topbar">
+        <button class="back-btn" @onclick="Close">
+            <Icon Name="chevron-left" />
+            <span>Jegyzetek</span>
+        </button>
+        <button class="icon-btn danger" @onclick="DeleteCurrent" aria-label="Jegyzet törlése">
+            <Icon Name="trash" Size="20" />
+        </button>
+    </header>
+
+    <div class="page editor">
+        <input class="editor-title" placeholder="Cím" maxlength="120"
+               @bind="editing.Title" @bind:event="oninput" @bind:after="Touch" />
+        <textarea class="editor-body" placeholder="Írj ide…"
+                  @bind="editing.Body" @bind:event="oninput" @bind:after="Touch"></textarea>
+        <p class="hint">Automatikusan mentve · @Fmt.Updated(editing.UpdatedAt)</p>
+    </div>
+}
+
+@code {
+    private bool loaded;
+    private Note? editing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private static string Preview(string body)
+    {
+        var firstLine = body.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .FirstOrDefault() ?? "";
+        return firstLine.Length > 60 ? firstLine[..60] + "…" : firstLine;
+    }
+
+    private void New()
+    {
+        var note = new Note();
+        Data.Notes.Add(note);
+        editing = note;
+    }
+
+    private void Open(Note n) => editing = n;
+
+    private Task Touch()
+    {
+        if (editing is null) return Task.CompletedTask;
+        editing.UpdatedAt = DateTime.Now;
+        return Data.SaveNotesAsync();
+    }
+
+    private async Task Close()
+    {
+        // Az üresen hagyott jegyzetet nem tartjuk meg.
+        if (editing is { IsEmpty: true })
+        {
+            Data.Notes.Remove(editing);
+            await Data.SaveNotesAsync();
+        }
+        editing = null;
+    }
+
+    private async Task DeleteCurrent()
+    {
+        if (editing is null) return;
+        Data.Notes.Remove(editing);
+        editing = null;
+        await Data.SaveNotesAsync();
+    }
+}

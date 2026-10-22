@@ -1,0 +1,27 @@
+{
+  "name": "ZsebApp – teendők, jegyzetek, kiadások",
+  "short_name": "ZsebApp",
+  "lang": "hu",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1fc4cf",
+  "theme_color": "#2b9fe0",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    }
+  ]
+}

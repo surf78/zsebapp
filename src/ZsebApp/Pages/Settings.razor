@@ -1,0 +1,170 @@
+@page "/beallitasok"
+@using System.Text.Json
+@inject AppData Data
+@inject IJSRuntime JS
+
+<PageTitle>Beállítások – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Beállítások</h1>
+</header>
+
+<div class="page">
+    <p class="section-label">Riport</p>
+    <section class="card actions">
+        <a class="action" href="beallitasok/riport">
+            <Icon Name="chart" Size="20" />
+            <span>Kiadások és mérőórák riportja</span>
+            <Icon Name="chevron-right" Size="18" Class="muted push-right" />
+        </a>
+    </section>
+
+    <p class="section-label">Adatok</p>
+    <section class="card">
+        <div class="stat-row">
+            <span>Teendők</span><span class="muted">@Data.Todos.Count</span>
+        </div>
+        <div class="stat-row">
+            <span>Jegyzetek</span><span class="muted">@Data.Notes.Count</span>
+        </div>
+        <div class="stat-row">
+            <span>Kiadások</span><span class="muted">@Data.Expenses.Count</span>
+        </div>
+        <div class="stat-row">
+            <span>Számlák</span><span class="muted">@Data.Bills.Count</span>
+        </div>
+        <div class="stat-row">
+            <span>Mérőóra-leolvasások</span><span class="muted">@Data.Meters.Count</span>
+        </div>
+    </section>
+    <p class="hint">Az adatok csak ezen a telefonon, az app saját tárhelyén vannak. Időnként készíts mentést.</p>
+
+    <p class="section-label">Mentés és visszaállítás</p>
+    <section class="card actions">
+        <button class="action" @onclick="Export">
+            <Icon Name="download" Size="20" />
+            <span>Mentés fájlba (JSON)</span>
+        </button>
+        <label class="action">
+            <Icon Name="upload" Size="20" />
+            <span>Visszaállítás fájlból</span>
+            <InputFile accept=".json,application/json" OnChange="ImportSelected" class="visually-hidden" />
+        </label>
+    </section>
+
+    @if (pendingImport is not null)
+    {
+        <section class="card confirm">
+            <p>
+                A fájlban <strong>@pendingImport.Todos.Count</strong> teendő,
+                <strong>@pendingImport.Notes.Count</strong> jegyzet,
+                <strong>@pendingImport.Expenses.Count</strong> kiadás,
+                <strong>@pendingImport.Bills.Count</strong> számla és
+                <strong>@pendingImport.Meters.Count</strong> mérőóra-leolvasás van.
+                A visszaállítás <strong>felülírja</strong> a jelenlegi adatokat.
+            </p>
+            <div class="btn-row">
+                <button class="btn" @onclick="() => pendingImport = null">Mégse</button>
+                <button class="btn primary" @onclick="ConfirmImport">Visszaállítás</button>
+            </div>
+        </section>
+    }
+
+    @if (message is not null)
+    {
+        <p class="hint">@message</p>
+    }
+
+    <p class="section-label">Veszélyzóna</p>
+    <section class="card actions">
+        @if (!confirmClear)
+        {
+            <button class="action danger" @onclick="() => confirmClear = true">
+                <Icon Name="trash" Size="20" />
+                <span>Minden adat törlése</span>
+            </button>
+        }
+        else
+        {
+            <div class="confirm">
+                <p>Biztosan törölsz mindent? Ez nem vonható vissza.</p>
+                <div class="btn-row">
+                    <button class="btn" @onclick="() => confirmClear = false">Mégse</button>
+                    <button class="btn danger" @onclick="ClearAll">Igen, törlés</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    <p class="section-label">Telepítés iPhone-ra</p>
+    <section class="card text-card">
+        <ol>
+            <li>Nyisd meg az app címét a <strong>Safariban</strong>.</li>
+            <li>Koppints a <strong>Megosztás</strong> gombra.</li>
+            <li>Válaszd a <strong>Főképernyőhöz adás</strong> lehetőséget.</li>
+        </ol>
+        <p class="muted">Ezután saját ikonnal, teljes képernyőn, internet nélkül is fut.</p>
+    </section>
+
+    <p class="footer muted">ZsebApp · .NET Blazor WebAssembly</p>
+</div>
+
+@code {
+    private Backup? pendingImport;
+    private bool confirmClear;
+    private string? message;
+
+    protected override Task OnInitializedAsync() => Data.EnsureLoadedAsync();
+
+    private async Task Export()
+    {
+        var json = JsonSerializer.Serialize(Data.CreateBackup(), AppJsonContext.Default.Backup);
+        var result = await JS.InvokeAsync<string>("zseb.saveFile", $"zsebapp-mentes_{Fmt.FileStamp(DateTime.Now)}.json", json);
+        message = result switch
+        {
+            "shared" => "Mentés kész.",
+            "downloaded" => "A mentés letöltve.",
+            _ => null,
+        };
+    }
+
+    private async Task ImportSelected(InputFileChangeEventArgs e)
+    {
+        message = null;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            var backup = await JsonSerializer.DeserializeAsync(stream, AppJsonContext.Default.Backup);
+            if (backup is null)
+            {
+                message = "A fájl üres.";
+                return;
+            }
+            backup.Todos ??= [];
+            backup.Notes ??= [];
+            backup.Expenses ??= [];
+            backup.Bills ??= [];
+            backup.Meters ??= [];
+            pendingImport = backup;
+        }
+        catch (Exception)
+        {
+            message = "Ez nem érvényes ZsebApp-mentés.";
+        }
+    }
+
+    private async Task ConfirmImport()
+    {
+        if (pendingImport is null) return;
+        await Data.RestoreAsync(pendingImport);
+        pendingImport = null;
+        message = "Visszaállítás kész.";
+    }
+
+    private async Task ClearAll()
+    {
+        await Data.ClearAllAsync();
+        confirmClear = false;
+        message = "Minden adat törölve.";
+    }
+}

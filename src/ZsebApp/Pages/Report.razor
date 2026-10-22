@@ -1,0 +1,193 @@
+@page "/beallitasok/riport"
+@inject AppData Data
+@inject IJSRuntime JS
+
+<PageTitle>Riport – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <a class="back-btn" href="beallitasok">
+        <Icon Name="chevron-left" />
+        <span>Beállítások</span>
+    </a>
+    <h1 class="topbar-title-small">Riport</h1>
+</header>
+
+<div class="page">
+    <section class="card filter-body report-period">
+        <PeriodPicker Value="period" ValueChanged="SetPeriod" />
+    </section>
+
+    @if (loaded)
+    {
+        var exp = Reports.Expenses(Data.Expenses, period);
+        var meters = Reports.Meters(Data.Meters, period);
+
+        @* ---------- Kiadások ---------- *@
+        <p class="section-label"><span>Kiadások</span><span>@exp.Count tétel</span></p>
+        <section class="card report-card">
+            <div class="report-total">@Fmt.Ft(exp.Total)</div>
+            <div class="report-meta">
+                @if (exp.DailyAverage > 0)
+                {
+                    <span>napi átlag: <strong>@Fmt.Ft(exp.DailyAverage)</strong></span>
+                }
+                @if (exp.PreviousTotal is 0 && exp.Total > 0)
+                {
+                    <span>az @period.PreviousName képest nincs összehasonlítás (akkor nem volt kiadás)</span>
+                }
+                else if (exp.PreviousTotal is { } prev)
+                {
+                    var change = Fmt.Change(exp.Total, prev);
+                    <span class="change @(exp.Total > prev ? "up" : exp.Total < prev ? "down" : null)">
+                        @change az @period.PreviousName (@Fmt.Ft(prev))
+                    </span>
+                }
+            </div>
+
+            @if (exp.Total > 0)
+            {
+                var max = exp.Breakdown.Max(b => b.Sum);
+                <p class="report-subtitle">@BreakdownTitle</p>
+                <div class="bars">
+                    @foreach (var b in exp.Breakdown)
+                    {
+                        <div class="bar-row">
+                            <span class="bar-label">@b.Label</span>
+                            <div class="bar-track">
+                                <div class="bar-fill" style="width:@Percent(b.Sum, max)%;background:var(--sail)"></div>
+                            </div>
+                            <span class="bar-value">@Fmt.Ft(b.Sum)</span>
+                        </div>
+                    }
+                </div>
+
+                <p class="report-subtitle">Kategóriánként</p>
+                <div class="bars">
+                    @foreach (var c in exp.ByCategory)
+                    {
+                        <div class="bar-row">
+                            <span class="bar-label">@c.Label</span>
+                            <div class="bar-track">
+                                <div class="bar-fill" style="width:@Percent(c.Sum, exp.ByCategory[0].Sum)%;background:@Categories.ColorOf(c.Label)"></div>
+                            </div>
+                            <span class="bar-value">@Fmt.Ft(c.Sum)</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="report-empty">Ebben az időszakban nincs rögzített kiadás.</p>
+            }
+        </section>
+
+        @* ---------- Mérőórák ---------- *@
+        <p class="section-label"><span>Mérőórák – fogyasztás</span></p>
+        <section class="card report-card">
+            @foreach (var m in meters)
+            {
+                <div class="report-meter" style="--meter:@m.Type.Color">
+                    <span class="meter-icon"><Icon Name="@m.Type.Icon" Size="18" /></span>
+                    <div class="row-main">
+                        <div class="bill-name">@m.Type.Name</div>
+                        <div class="row-sub">
+                            @if (m.Readings == 0)
+                            {
+                                <span>nincs leolvasás</span>
+                            }
+                            else
+                            {
+                                <span>
+                                    @m.Readings leolvasás
+                                    @if (m.Last is { } last)
+                                    {
+                                        <text> · utolsó: @Fmt.Number(last.Value, 1) @m.Type.Unit</text>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    </div>
+                    <div class="bill-right">
+                        <span class="amount">@(m.Usage is { } u ? $"{Fmt.Number(u, 2)} {m.Type.Unit}" : "–")</span>
+                        @if (m.DailyUsage is { } d)
+                        {
+                            <span class="report-daily">napi @Fmt.Number(d, 2)</span>
+                        }
+                    </div>
+                </div>
+            }
+            <p class="report-note">A fogyasztás az időszakba eső leolvasások és az azokat megelőző leolvasás különbsége.</p>
+        </section>
+
+        @* ---------- Export ---------- *@
+        <p class="section-label"><span>Exportálás</span></p>
+        <section class="card actions">
+            <button class="action" @onclick="ExportExpenses">
+                <Icon Name="download" Size="20" />
+                <span>Kiadások táblázatba (CSV)</span>
+            </button>
+            <button class="action" @onclick="ExportMeters">
+                <Icon Name="download" Size="20" />
+                <span>Mérőállások táblázatba (CSV)</span>
+            </button>
+        </section>
+        @if (message is not null)
+        {
+            <p class="hint">@message</p>
+        }
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private Period period = Period.Containing(PeriodKind.Month, Period.Today);
+    private string? message;
+
+    private string BreakdownTitle => period.Kind switch
+    {
+        PeriodKind.Week => "Naponként",
+        PeriodKind.Month => "Hetenként",
+        PeriodKind.Year => "Havonként",
+        _ => "Évenként",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private void SetPeriod(Period p)
+    {
+        period = p;
+        message = null;
+    }
+
+    private static string Percent(long part, long max) =>
+        max <= 0 || part <= 0 ? "0" : Math.Max(2, Math.Round(part * 100.0 / max, 1)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private string FileSuffix => period.Kind switch
+    {
+        PeriodKind.Week => $"{period.Start:yyyy-MM-dd}_het",
+        PeriodKind.Month => $"{period.Start:yyyy-MM}",
+        PeriodKind.Year => $"{period.Start:yyyy}",
+        _ => "teljes",
+    };
+
+    private Task ExportExpenses() =>
+        Save($"kiadasok_{FileSuffix}.csv", Reports.ExpensesCsv(Data.Expenses, period));
+
+    private Task ExportMeters() =>
+        Save($"meroallasok_{FileSuffix}.csv", Reports.MetersCsv(Data.Meters, period));
+
+    private async Task Save(string fileName, string csv)
+    {
+        var result = await JS.InvokeAsync<string>("zseb.saveFile", fileName, csv, "text/csv;charset=utf-8");
+        message = result switch
+        {
+            "shared" => $"Kész: {fileName}",
+            "downloaded" => $"Letöltve: {fileName}",
+            _ => null,
+        };
+    }
+}

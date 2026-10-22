@@ -1,0 +1,202 @@
+@page "/kiadasok"
+@inject AppData Data
+
+<PageTitle>Kiadások – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Kiadások</h1>
+    <button class="icon-btn primary" @onclick="ToggleForm" aria-label="Új kiadás" aria-expanded="@(showForm ? "true" : "false")">
+        <Icon Name="plus" Class="@(showForm ? "rotate-45" : null)" />
+    </button>
+</header>
+
+<div class="page">
+    @if (showForm)
+    {
+        <form class="card form" @onsubmit="Add">
+            <label class="field">
+                <span>Összeg (Ft)</span>
+                <input class="input amount-input" type="text" inputmode="numeric" pattern="[0-9 ]*"
+                       placeholder="0" maxlength="12" @bind="amountText" @bind:event="oninput" />
+            </label>
+
+            <div class="field">
+                <span>Kategória</span>
+                <div class="chips">
+                    @foreach (var c in Categories.All)
+                    {
+                        <button type="button" class="chip @(c.Name == category ? "selected" : null)"
+                                style="--chip:@c.Color" @onclick="() => category = c.Name">
+                            @c.Name
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="field-row">
+                <label class="field">
+                    <span>Dátum</span>
+                    <input class="input" type="date" @bind="date" @bind:format="yyyy-MM-dd" />
+                </label>
+                <label class="field grow">
+                    <span>Megjegyzés</span>
+                    <input class="input" placeholder="pl. bevásárlás" maxlength="80" @bind="description" />
+                </label>
+            </div>
+
+            @if (error is not null)
+            {
+                <p class="error">@error</p>
+            }
+
+            <button type="submit" class="btn primary block">Mentés</button>
+        </form>
+    }
+
+    <div class="month-switch">
+        <button class="icon-btn ghost" @onclick="() => ShiftMonth(-1)" aria-label="Előző hónap">
+            <Icon Name="chevron-left" />
+        </button>
+        <span class="month-title">@Fmt.MonthTitle(year, month)</span>
+        <button class="icon-btn ghost" @onclick="() => ShiftMonth(1)" aria-label="Következő hónap">
+            <Icon Name="chevron-right" />
+        </button>
+    </div>
+
+    @if (loaded)
+    {
+        var items = MonthItems;
+        var total = items.Sum(e => (long)e.Amount);
+
+        <section class="card summary">
+            <div class="summary-total">@Fmt.Ft(total)</div>
+            <div class="summary-sub">@items.Count tétel ebben a hónapban</div>
+
+            @if (total > 0)
+            {
+                var byCat = items.GroupBy(e => e.Category)
+                                 .Select(g => (Name: g.Key, Sum: g.Sum(e => (long)e.Amount)))
+                                 .OrderByDescending(x => x.Sum)
+                                 .ToList();
+
+                <div class="bars">
+                    @foreach (var (name, sum) in byCat)
+                    {
+                        <div class="bar-row">
+                            <span class="bar-label">@name</span>
+                            <div class="bar-track">
+                                <div class="bar-fill" style="width:@Percent(sum, total)%;background:@Categories.ColorOf(name)"></div>
+                            </div>
+                            <span class="bar-value">@Fmt.Ft(sum)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (items.Count == 0)
+        {
+            <EmptyState IconName="wallet" Title="Nincs kiadás ebben a hónapban" Text="A + gombbal rögzíthetsz újat." />
+        }
+        else
+        {
+            @foreach (var day in items.GroupBy(e => e.Date).OrderByDescending(g => g.Key))
+            {
+                <p class="section-label">
+                    <span>@Fmt.DayHeader(day.Key)</span>
+                    <span>@Fmt.Ft(day.Sum(e => (long)e.Amount))</span>
+                </p>
+                <ul class="card list">
+                    @foreach (var e in day)
+                    {
+                        <li class="row" @key="e.Id">
+                            <span class="dot" style="background:@Categories.ColorOf(e.Category)"></span>
+                            <div class="row-main">
+                                <div>@(string.IsNullOrWhiteSpace(e.Description) ? e.Category : e.Description)</div>
+                                @if (!string.IsNullOrWhiteSpace(e.Description))
+                                {
+                                    <div class="row-sub">@e.Category</div>
+                                }
+                            </div>
+                            <span class="amount">@Fmt.Ft(e.Amount)</span>
+                            <button class="icon-btn ghost" @onclick="() => Delete(e)" aria-label="Törlés">
+                                <Icon Name="trash" Size="20" />
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        }
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private bool showForm;
+    private int year = DateTime.Now.Year;
+    private int month = DateTime.Now.Month;
+
+    private string amountText = "";
+    private string category = Categories.All[0].Name;
+    private DateOnly date = DateOnly.FromDateTime(DateTime.Now);
+    private string description = "";
+    private string? error;
+
+    private List<Expense> MonthItems =>
+        Data.Expenses.Where(e => e.Date.Year == year && e.Date.Month == month).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private static string Percent(long part, long total) =>
+        Math.Max(2, Math.Round(part * 100.0 / total, 1)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        error = null;
+    }
+
+    private void ShiftMonth(int delta)
+    {
+        var d = new DateOnly(year, month, 1).AddMonths(delta);
+        year = d.Year;
+        month = d.Month;
+    }
+
+    private async Task Add()
+    {
+        var digits = new string(amountText.Where(char.IsDigit).ToArray());
+        if (!int.TryParse(digits, out var amount) || amount <= 0)
+        {
+            error = "Adj meg egy 0-nál nagyobb összeget.";
+            return;
+        }
+
+        Data.Expenses.Add(new Expense
+        {
+            Amount = amount,
+            Category = category,
+            Date = date,
+            Description = description.Trim(),
+        });
+        await Data.SaveExpensesAsync();
+
+        // Ugrás a rögzített tétel hónapjára, űrlap alaphelyzetbe.
+        year = date.Year;
+        month = date.Month;
+        amountText = "";
+        description = "";
+        error = null;
+        showForm = false;
+    }
+
+    private async Task Delete(Expense e)
+    {
+        Data.Expenses.Remove(e);
+        await Data.SaveExpensesAsync();
+    }
+}

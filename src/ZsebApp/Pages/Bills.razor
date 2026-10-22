@@ -1,0 +1,290 @@
+@page "/szamlak"
+@inject AppData Data
+
+<PageTitle>Számlák – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Számlák</h1>
+    <button class="icon-btn primary" @onclick="ToggleForm" aria-label="Új számla" aria-expanded="@(showForm ? "true" : "false")">
+        <Icon Name="plus" Class="@(showForm ? "rotate-45" : null)" />
+    </button>
+</header>
+
+<div class="page">
+    <BillsSubNav />
+
+    @if (showForm)
+    {
+        <form class="card form" @onsubmit="Add">
+            <label class="field">
+                <span>Megnevezés</span>
+                <input class="input" placeholder="pl. Gázszámla" maxlength="80" @bind="name" @bind:event="oninput" />
+            </label>
+            <div class="chips">
+                @foreach (var preset in BillPresets.Names)
+                {
+                    <button type="button" class="chip neutral @(preset == name ? "selected" : null)" @onclick="() => name = preset">
+                        @preset
+                    </button>
+                }
+            </div>
+
+            <div class="field-row">
+                <label class="field grow">
+                    <span>Összeg (Ft)</span>
+                    <input class="input amount-input" type="text" inputmode="numeric" pattern="[0-9 ]*"
+                           placeholder="0" maxlength="12" @bind="amountText" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span>Dátum</span>
+                    <input class="input date-input" type="date" @bind="date" @bind:format="yyyy-MM-dd" />
+                </label>
+            </div>
+
+            <div class="field">
+                <span>Állapot</span>
+                <div class="segmented" role="radiogroup" aria-label="Állapot">
+                    <button type="button" role="radio" aria-checked="@(!paid ? "true" : "false")"
+                            class="seg unpaid @(!paid ? "selected" : null)" @onclick="() => paid = false">
+                        Rendezetlen
+                    </button>
+                    <button type="button" role="radio" aria-checked="@(paid ? "true" : "false")"
+                            class="seg paid @(paid ? "selected" : null)" @onclick="() => paid = true">
+                        Fizetve
+                    </button>
+                </div>
+            </div>
+
+            @if (error is not null)
+            {
+                <p class="error">@error</p>
+            }
+
+            <button type="submit" class="btn primary block">Mentés</button>
+        </form>
+    }
+
+    @if (loaded)
+    {
+        var filtered = Filtered;
+        var unpaid = filtered.Where(b => !b.Paid).OrderByDescending(b => b.EffectiveDate).ThenByDescending(b => b.CreatedAt).ToList();
+        var paidList = filtered.Where(b => b.Paid).OrderByDescending(b => b.EffectiveDate).ThenByDescending(b => b.PaidAt ?? b.CreatedAt).ToList();
+
+        @if (Data.Bills.Count > 0)
+        {
+            <section class="card filter-card">
+                <button type="button" class="filter-toggle" @onclick="() => showFilter = !showFilter" aria-expanded="@(showFilter ? "true" : "false")">
+                    <Icon Name="filter" Size="18" />
+                    <span class="filter-summary">@FilterSummary</span>
+                    @if (IsFiltered)
+                    {
+                        <span class="filter-badge">szűrve</span>
+                    }
+                    <Icon Name="chevron-down" Size="18" Class="@(showFilter ? "rotate-180" : null)" />
+                </button>
+
+                @if (showFilter)
+                {
+                    <div class="filter-body">
+                        <span class="filter-label">Időszak</span>
+                        <PeriodPicker Value="period" ValueChanged="SetPeriod" />
+
+                        <span class="filter-label">Csoport</span>
+                        <div class="chips">
+                            <button type="button" class="chip neutral @(group is null ? "selected" : null)" @onclick="() => group = null">
+                                Mind
+                            </button>
+                            @foreach (var g in Groups)
+                            {
+                                <button type="button" class="chip neutral @(SameGroup(g, group) ? "selected" : null)" @onclick="() => group = g">
+                                    @g
+                                </button>
+                            }
+                        </div>
+
+                        @if (IsFiltered)
+                        {
+                            <button type="button" class="link-btn" @onclick="ClearFilter">Szűrés törlése</button>
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        <section class="bill-summary">
+            <div class="card bill-total unpaid">
+                <span class="bill-total-label">Rendezetlen</span>
+                <span class="bill-total-value">@Fmt.Ft(unpaid.Sum(b => (long)b.Amount))</span>
+                <span class="bill-total-sub">@unpaid.Count db</span>
+            </div>
+            <div class="card bill-total paid">
+                <span class="bill-total-label">Fizetve</span>
+                <span class="bill-total-value">@Fmt.Ft(paidList.Sum(b => (long)b.Amount))</span>
+                <span class="bill-total-sub">@paidList.Count db</span>
+            </div>
+        </section>
+
+        @if (Data.Bills.Count == 0)
+        {
+            <EmptyState IconName="receipt" Title="Nincs számla" Text="A + gombbal rögzíthetsz újat, pl. Gázszámla." />
+        }
+        else if (filtered.Count == 0)
+        {
+            <EmptyState IconName="filter" Title="Nincs találat" Text="Ebben az időszakban / csoportban nincs számla." />
+        }
+        else
+        {
+            @if (unpaid.Count > 0)
+            {
+                <p class="section-label">Rendezetlen</p>
+                <ul class="card list">
+                    @foreach (var b in unpaid)
+                    {
+                        @BillRow(b)
+                    }
+                </ul>
+            }
+
+            @if (paidList.Count > 0)
+            {
+                <p class="section-label">Fizetve</p>
+                <ul class="card list">
+                    @foreach (var b in paidList)
+                    {
+                        @BillRow(b)
+                    }
+                </ul>
+            }
+
+            <p class="hint">Az állapotra koppintva válthatsz Rendezetlen és Fizetve között.</p>
+        }
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private bool showForm;
+    private bool showFilter;
+
+    // Szűrés
+    private Period period = Period.All;
+    private string? group;
+
+    // Űrlap
+    private string name = "";
+    private string amountText = "";
+    private DateOnly date = DateOnly.FromDateTime(DateTime.Now);
+    private bool paid; // alapértelmezés: Rendezetlen
+    private string? error;
+
+    private static bool SameGroup(string? a, string? b) =>
+        a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A csoportok a számlák megnevezései (Gázszámla, Villanyszámla…), ábécérendben.</summary>
+    private List<string> Groups =>
+        Data.Bills.Select(b => b.Name.Trim())
+            .Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.Create(System.Globalization.CultureInfo.InvariantCulture, true))
+            .ToList();
+
+    private List<Bill> Filtered =>
+        Data.Bills.Where(b => period.Contains(b.EffectiveDate) && (group is null || SameGroup(b.Name, group))).ToList();
+
+    private bool IsFiltered => period.Kind != PeriodKind.All || group is not null;
+
+    private string FilterSummary =>
+        $"{group ?? "Minden csoport"} · {period.Title}";
+
+    private RenderFragment BillRow(Bill b) => @<li class="row" @key="b.Id">
+        <div class="row-main">
+            <div class="bill-name">@b.Name</div>
+            <div class="row-sub">
+                <span>
+                    @Fmt.SmartDate(b.EffectiveDate)
+                    @if (b.Paid && b.PaidAt is { } paidAt)
+                    {
+                        <text> · fizetve: @Fmt.TinyDate(DateOnly.FromDateTime(paidAt))</text>
+                    }
+                </span>
+            </div>
+        </div>
+        <div class="bill-right">
+            <span class="amount">@Fmt.Ft(b.Amount)</span>
+            <button class="status-pill @(b.Paid ? "paid" : "unpaid")" @onclick="() => TogglePaid(b)"
+                    aria-label="@(b.Paid ? "Fizetve – koppints a Rendezetlenre váltáshoz" : "Rendezetlen – koppints a Fizetvére váltáshoz")">
+                @(b.Paid ? "Fizetve" : "Rendezetlen")
+            </button>
+        </div>
+        <button class="icon-btn ghost" @onclick="() => Delete(b)" aria-label="Törlés">
+            <Icon Name="trash" Size="20" />
+        </button>
+    </li>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private void SetPeriod(Period p) => period = p;
+
+    private void ClearFilter()
+    {
+        period = Period.All;
+        group = null;
+    }
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        error = null;
+    }
+
+    private async Task Add()
+    {
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0)
+        {
+            error = "Add meg a számla nevét.";
+            return;
+        }
+
+        var digits = new string(amountText.Where(char.IsDigit).ToArray());
+        if (!int.TryParse(digits, out var amount) || amount <= 0)
+        {
+            error = "Adj meg egy 0-nál nagyobb összeget.";
+            return;
+        }
+
+        Data.Bills.Add(new Bill
+        {
+            Name = trimmed,
+            Amount = amount,
+            Date = date,
+            Paid = paid,
+            PaidAt = paid ? DateTime.Now : null,
+        });
+        await Data.SaveBillsAsync();
+
+        name = "";
+        amountText = "";
+        date = DateOnly.FromDateTime(DateTime.Now);
+        paid = false;
+        error = null;
+        showForm = false;
+    }
+
+    private async Task TogglePaid(Bill b)
+    {
+        b.Paid = !b.Paid;
+        b.PaidAt = b.Paid ? DateTime.Now : null;
+        await Data.SaveBillsAsync();
+    }
+
+    private async Task Delete(Bill b)
+    {
+        Data.Bills.Remove(b);
+        await Data.SaveBillsAsync();
+    }
+}

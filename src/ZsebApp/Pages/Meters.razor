@@ -1,0 +1,217 @@
+@page "/szamlak/merok"
+@inject AppData Data
+
+<PageTitle>Mérőórák – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Mérőórák</h1>
+    <button class="icon-btn primary" @onclick="ToggleForm" aria-label="Új leolvasás" aria-expanded="@(showForm ? "true" : "false")">
+        <Icon Name="plus" Class="@(showForm ? "rotate-45" : null)" />
+    </button>
+</header>
+
+<div class="page">
+    <BillsSubNav />
+
+    @if (loaded)
+    {
+        <div class="meter-picker" role="tablist" aria-label="Mérő kiválasztása">
+            @foreach (var m in MeterTypes.All)
+            {
+                var last = LastOf(m.Name);
+                <button type="button" role="tab" aria-selected="@(m.Name == meter ? "true" : "false")"
+                        class="meter-card @(m.Name == meter ? "selected" : null)" style="--meter:@m.Color"
+                        @onclick="() => Select(m.Name)">
+                    <span class="meter-icon"><Icon Name="@m.Icon" Size="20" /></span>
+                    <span class="meter-name">@m.Name</span>
+                    <span class="meter-last">@(last is null ? "–" : $"{Fmt.Number(last.Value, 1)} {m.Unit}")</span>
+                </button>
+            }
+        </div>
+
+        @if (showForm)
+        {
+            <form class="card form" @onsubmit="Add">
+                <p class="form-title">Új leolvasás – @Type.Name</p>
+                <label class="field">
+                    <span>Óraállás (@Type.Unit)</span>
+                    <div class="unit-input">
+                        <input class="input amount-input" type="text" inputmode="decimal" maxlength="16"
+                               placeholder="@(Rows.Count > 0 ? Fmt.Number(Rows[^1].Reading.Value) : "0")"
+                               @bind="valueText" @bind:event="oninput" aria-label="Óraállás" />
+                        <span class="unit">@Type.Unit</span>
+                    </div>
+                </label>
+                <div class="field-row">
+                    <label class="field">
+                        <span>Dátum</span>
+                        <input class="input" type="date" @bind="date" @bind:format="yyyy-MM-dd" />
+                    </label>
+                    <label class="field grow">
+                        <span>Megjegyzés</span>
+                        <input class="input" placeholder="pl. éves leolvasás" maxlength="80" @bind="note" />
+                    </label>
+                </div>
+
+                @if (error is not null)
+                {
+                    <p class="error">@error</p>
+                }
+
+                <button type="submit" class="btn primary block">Mentés</button>
+            </form>
+        }
+
+        @if (Rows.Count == 0)
+        {
+            <div class="empty" style="color:@Type.Color">
+                <Icon Name="@Type.Icon" Size="40" />
+                <p class="empty-title">Még nincs @Type.Name.ToLowerInvariant()óra-állás</p>
+                <p class="empty-text">A + gombbal rögzítheted az első leolvasást.</p>
+            </div>
+        }
+        else
+        {
+            var lastRow = Rows[^1];
+
+            <section class="card meter-summary" style="--meter:@Type.Color">
+                <span class="meter-summary-label">Utolsó állás · @Fmt.SmartDate(lastRow.Reading.Date)</span>
+                <span class="meter-summary-value">@Fmt.Number(lastRow.Reading.Value) <small>@Type.Unit</small></span>
+                @if (lastRow.Usage is { } usage)
+                {
+                    <span class="meter-summary-sub">
+                        Az előző óta: <strong>+@Fmt.Number(usage, 2) @Type.Unit</strong>
+                        · @lastRow.Days nap
+                        @if (lastRow.DailyUsage is { } daily)
+                        {
+                            <text> · napi @Fmt.Number(daily, 2) @Type.Unit</text>
+                        }
+                    </span>
+                }
+
+                @if (UsageRows.Count > 0)
+                {
+                    var max = UsageRows.Max(r => r.Usage!.Value);
+                    <div class="bars">
+                        @foreach (var r in UsageRows)
+                        {
+                            <div class="bar-row">
+                                <span class="bar-label">@Fmt.TinyDate(r.Reading.Date)</span>
+                                <div class="bar-track">
+                                    <div class="bar-fill" style="width:@Percent(r.Usage!.Value, max)%;background:@Type.Color"></div>
+                                </div>
+                                <span class="bar-value">@Fmt.Number(r.Usage!.Value, 1) @Type.Unit</span>
+                            </div>
+                        }
+                    </div>
+                    <span class="meter-summary-hint">Fogyasztás az előző leolvasás óta</span>
+                }
+            </section>
+
+            <p class="section-label"><span>Leolvasások</span><span>@Rows.Count db</span></p>
+            <ul class="card list">
+                @foreach (var r in Enumerable.Reverse(Rows))
+                {
+                    <li class="row" @key="r.Reading.Id">
+                        <span class="dot" style="background:@Type.Color"></span>
+                        <div class="row-main">
+                            <div class="bill-name">@Fmt.SmartDate(r.Reading.Date)</div>
+                            @if (!string.IsNullOrWhiteSpace(r.Reading.Note))
+                            {
+                                <div class="row-sub">@r.Reading.Note</div>
+                            }
+                        </div>
+                        <div class="bill-right">
+                            <span class="amount">@Fmt.Number(r.Reading.Value) @Type.Unit</span>
+                            @if (r.Usage is { } u)
+                            {
+                                <span class="usage-badge" style="--meter:@Type.Color">+@Fmt.Number(u, 2)</span>
+                            }
+                        </div>
+                        <button class="icon-btn ghost" @onclick="() => Delete(r.Reading)" aria-label="Törlés">
+                            <Icon Name="trash" Size="20" />
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private bool showForm;
+    private string meter = MeterTypes.All[0].Name;
+
+    private string valueText = "";
+    private DateOnly date = DateOnly.FromDateTime(DateTime.Now);
+    private string note = "";
+    private string? error;
+
+    private MeterType Type => MeterTypes.Get(meter);
+    private List<MeterRow> Rows => MeterMath.Rows(Data.Meters, meter);
+
+    /// <summary>Az utolsó 6 időszak fogyasztása (régebbi elöl).</summary>
+    private List<MeterRow> UsageRows => Rows.Where(r => r.Usage is not null).TakeLast(6).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private MeterReading? LastOf(string name) =>
+        Data.Meters.Where(r => r.Meter == name).OrderBy(r => r.Date).ThenBy(r => r.Value).LastOrDefault();
+
+    private static string Percent(decimal part, decimal max) =>
+        max <= 0 ? "2" : Math.Max(2, Math.Round(part * 100 / max, 1)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private void Select(string name)
+    {
+        meter = name;
+        error = null;
+    }
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        error = null;
+    }
+
+    private async Task Add()
+    {
+        if (!MeterMath.TryParse(valueText, out var value))
+        {
+            error = "Adj meg egy érvényes óraállást (pl. 12345,678).";
+            return;
+        }
+
+        var problem = MeterMath.Validate(Data.Meters, meter, value, date);
+        if (problem is not null)
+        {
+            error = problem;
+            return;
+        }
+
+        Data.Meters.Add(new MeterReading
+        {
+            Meter = meter,
+            Value = value,
+            Date = date,
+            Note = note.Trim(),
+        });
+        await Data.SaveMetersAsync();
+
+        valueText = "";
+        note = "";
+        date = DateOnly.FromDateTime(DateTime.Now);
+        error = null;
+        showForm = false;
+    }
+
+    private async Task Delete(MeterReading r)
+    {
+        Data.Meters.Remove(r);
+        await Data.SaveMetersAsync();
+    }
+}

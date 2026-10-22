@@ -1,0 +1,30 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app">
+    <main class="content">
+        @Body
+    </main>
+
+    <nav class="tabbar" aria-label="Fő navigáció">
+        <NavLink class="tab" href="" Match="NavLinkMatch.All">
+            <Icon Name="list" />
+            <span>Teendők</span>
+        </NavLink>
+        <NavLink class="tab" href="jegyzetek">
+            <Icon Name="note" />
+            <span>Jegyzetek</span>
+        </NavLink>
+        <NavLink class="tab" href="kiadasok">
+            <Icon Name="wallet" />
+            <span>Kiadások</span>
+        </NavLink>
+        <NavLink class="tab" href="szamlak">
+            <Icon Name="receipt" />
+            <span>Számlák</span>
+        </NavLink>
+        <NavLink class="tab" href="beallitasok">
+            <Icon Name="gear" />
+            <span>Beállítások</span>
+        </NavLink>
+    </nav>
+</div>

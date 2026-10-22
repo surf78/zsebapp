@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="hu">
+
+<head>
+    <meta charset="utf-8" />
+    <!-- Nagyítás tiltva: az app natív appként viselkedjen -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>ZsebApp</title>
+    <!-- GitHub Pages-re publikáláskor a workflow ezt átírja "/<repo-név>/"-re. -->
+    <base href="/" />
+
+    <!-- iPhone: teljes képernyős futás a főképernyőről indítva -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ZsebApp" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#2b9fe0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a1c28" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link href="manifest.webmanifest" rel="manifest" />
+
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="splash">
+            <img src="icon-192.png" alt="" width="96" height="96" />
+            <svg class="loading-progress">
+                <circle r="40%" cx="50%" cy="50%" />
+                <circle r="40%" cx="50%" cy="50%" />
+            </svg>
+            <div class="loading-progress-text"></div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        Váratlan hiba történt.
+        <a href="." class="reload">Újratöltés</a>
+        <span class="dismiss">✕</span>
+    </div>
+    <script src="js/zseb.js"></script>
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' });</script>
+</body>
+
+</html>

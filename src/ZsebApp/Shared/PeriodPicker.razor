@@ -1,0 +1,57 @@
+@* Időszak-választó: Mind / Hét / Hónap / Év, alatta léptetés az előző / következő időszakra. *@
+<div class="period-picker">
+    <div class="segmented period-kinds" role="radiogroup" aria-label="Időszak típusa">
+        @foreach (var k in Kinds)
+        {
+            <button type="button" role="radio" aria-checked="@(Value.Kind == k ? "true" : "false")"
+                    class="seg @(Value.Kind == k ? "selected" : null)" @onclick="() => SetKind(k)">
+                @Period.KindLabel(k)
+            </button>
+        }
+    </div>
+
+    @if (Value.Kind != PeriodKind.All)
+    {
+        <div class="period-nav">
+            <button type="button" class="icon-btn ghost" @onclick="() => Shift(-1)" aria-label="Előző időszak">
+                <Icon Name="chevron-left" />
+            </button>
+            <div class="period-title">
+                <span>@Value.Title</span>
+                @if (Value.Subtitle is { } sub)
+                {
+                    <small>@sub</small>
+                }
+            </div>
+            <button type="button" class="icon-btn ghost" @onclick="() => Shift(1)" aria-label="Következő időszak">
+                <Icon Name="chevron-right" />
+            </button>
+        </div>
+        @if (!Value.IsCurrent)
+        {
+            <button type="button" class="link-btn period-today" @onclick="GoToday">Ugrás a mostanira</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Period Value { get; set; } = Period.All;
+    [Parameter] public EventCallback<Period> ValueChanged { get; set; }
+    [Parameter] public bool AllowAll { get; set; } = true;
+
+    private IEnumerable<PeriodKind> Kinds =>
+        AllowAll
+            ? [PeriodKind.All, PeriodKind.Week, PeriodKind.Month, PeriodKind.Year]
+            : [PeriodKind.Week, PeriodKind.Month, PeriodKind.Year];
+
+    private Task SetKind(PeriodKind k)
+    {
+        // Az új időszak a jelenleg nézett időszak elejét (vagy a mai napot) tartalmazza.
+        var anchor = Value.Kind == PeriodKind.All || Value.IsCurrent ? Period.Today : Value.Start;
+        return ValueChanged.InvokeAsync(Period.Containing(k, anchor));
+    }
+
+    private Task Shift(int n) => ValueChanged.InvokeAsync(Value.Shift(n));
+
+    private Task GoToday() => ValueChanged.InvokeAsync(Period.Containing(Value.Kind, Period.Today));
+}

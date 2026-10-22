@@ -1,0 +1,177 @@
+@page "/"
+@page "/index.html"
+@implements IAsyncDisposable
+@inject AppData Data
+@inject IJSRuntime JS
+
+<PageTitle>Teendők – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Teendők</h1>
+    @if (DoneCount > 0)
+    {
+        <button class="link-btn" @onclick="ClearDone">Készek törlése (@DoneCount)</button>
+    }
+</header>
+
+<div class="page">
+    <form class="add-row" @onsubmit="Add">
+        <input class="input" placeholder="@(listening ? "Hallgatlak…" : "Új teendő…")" maxlength="200" enterkeyhint="done"
+               @bind="newTitle" @bind:event="oninput" aria-label="Új teendő" />
+        @* A kattintást a zseb.js kezeli (a mikrofont csak közvetlen érintés indíthatja). *@
+        <button type="button" class="icon-btn mic @(listening ? "listening" : null)" @ref="micButton"
+                aria-label="@(listening ? "Felvétel leállítása" : "Feladat rögzítése hanggal")"
+                aria-pressed="@(listening ? "true" : "false")">
+            <Icon Name="@(listening ? "stop" : "mic")" Size="20" />
+        </button>
+        <button type="submit" class="icon-btn primary" disabled="@string.IsNullOrWhiteSpace(newTitle)" aria-label="Hozzáadás">
+            <Icon Name="plus" />
+        </button>
+    </form>
+
+    @if (listening)
+    {
+        <p class="speech-hint listening" role="status">Mondd a feladatot… (koppints a gombra a leállításhoz)</p>
+    }
+    else if (speechHint is not null)
+    {
+        <p class="speech-hint" role="status">@speechHint</p>
+    }
+
+    @if (!loaded)
+    {
+    }
+    else if (Data.Todos.Count == 0)
+    {
+        <EmptyState IconName="list" Title="Nincs teendő" Text="Írd be fent az első feladatot." />
+    }
+    else
+    {
+        <p class="section-label">@OpenCount nyitott, @DoneCount kész</p>
+        <ul class="card list">
+            @foreach (var t in Ordered)
+            {
+                <li class="row @(t.Done ? "done" : null)" @key="t.Id">
+                    <button class="check" @onclick="() => Toggle(t)" aria-pressed="@(t.Done ? "true" : "false")"
+                            aria-label="@(t.Done ? "Visszaállítás nyitottra" : "Késznek jelöl")">
+                        <Icon Name="check" Size="16" />
+                    </button>
+                    <span class="row-main" @onclick="() => Toggle(t)">@t.Title</span>
+                    <button class="icon-btn ghost" @onclick="() => Delete(t)" aria-label="Törlés">
+                        <Icon Name="trash" Size="20" />
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private string newTitle = "";
+
+    // Hangfelismerés
+    private ElementReference micButton;
+    private DotNetObjectReference<Todos>? selfRef;
+    private bool listening;
+    private string? speechHint;
+
+    private int DoneCount => Data.Todos.Count(t => t.Done);
+    private int OpenCount => Data.Todos.Count - DoneCount;
+
+    private IEnumerable<TodoItem> Ordered =>
+        Data.Todos.Where(t => !t.Done).OrderByDescending(t => t.CreatedAt)
+            .Concat(Data.Todos.Where(t => t.Done).OrderByDescending(t => t.CompletedAt));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        selfRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("zseb.speech.attach", micButton, selfRef, SpeechText.Language);
+    }
+
+    [JSInvokable]
+    public void OnSpeechStart()
+    {
+        listening = true;
+        speechHint = null;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechResult(string text)
+    {
+        // Élő átirat: beszéd közben is látszik, mit ért a felismerő.
+        newTitle = SpeechText.Clean(text);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechEnd(string text)
+    {
+        listening = false;
+        var cleaned = SpeechText.Clean(text);
+        if (cleaned.Length > 0)
+        {
+            newTitle = cleaned;
+            speechHint = "Ellenőrizd a szöveget, majd koppints a + gombra.";
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechError(string code)
+    {
+        listening = false;
+        speechHint = SpeechText.ErrorMessage(code);
+        StateHasChanged();
+    }
+
+    private async Task Add()
+    {
+        var title = newTitle.Trim();
+        if (title.Length == 0) return;
+
+        Data.Todos.Add(new TodoItem { Title = title });
+        newTitle = "";
+        speechHint = null;
+        await Data.SaveTodosAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("zseb.speech.detach", micButton);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        selfRef?.Dispose();
+    }
+
+    private async Task Toggle(TodoItem t)
+    {
+        t.Done = !t.Done;
+        t.CompletedAt = t.Done ? DateTime.Now : null;
+        await Data.SaveTodosAsync();
+    }
+
+    private async Task Delete(TodoItem t)
+    {
+        Data.Todos.Remove(t);
+        await Data.SaveTodosAsync();
+    }
+
+    private async Task ClearDone()
+    {
+        Data.Todos.RemoveAll(t => t.Done);
+        await Data.SaveTodosAsync();
+    }
+}
