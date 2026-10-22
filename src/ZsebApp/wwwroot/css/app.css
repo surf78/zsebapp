@@ -92,7 +92,7 @@ button { touch-action: manipulation; cursor: pointer; }
 /* 16px alatti betűméretnél az iOS ráközelít a mezőre – ezt kerüljük el. */
 input, textarea { font-size: 17px; }
 
-.app { min-height: 100dvh; }
+.app { min-height: 100dvh; overflow-x: clip; }  /* húzás közben ne jelenjen meg vízszintes görgetés */
 
 .content {
     /* a lebegő mikrofon gomb miatt plusz hely, hogy az utolsó sor is kigörgethető legyen */
@@ -853,16 +853,16 @@ a.action { text-decoration: none; }
 }
 
 /* ---------- Fülváltás animáció (húzás / koppintás) ---------- */
-.slide-from-right { animation: slide-from-right 0.22s ease-out; }
-.slide-from-left { animation: slide-from-left 0.22s ease-out; }
+.slide-from-right { animation: slide-from-right 0.26s cubic-bezier(.2, .8, .2, 1); }
+.slide-from-left { animation: slide-from-left 0.26s cubic-bezier(.2, .8, .2, 1); }
 
 @keyframes slide-from-right {
-    from { opacity: 0.3; transform: translateX(40px); }
+    from { opacity: 0.3; transform: translateX(45%); }
     to { opacity: 1; transform: none; }
 }
 
 @keyframes slide-from-left {
-    from { opacity: 0.3; transform: translateX(-40px); }
+    from { opacity: 0.3; transform: translateX(-45%); }
     to { opacity: 1; transform: none; }
 }
 

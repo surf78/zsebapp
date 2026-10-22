@@ -4,7 +4,7 @@
 @inject IJSRuntime JS
 @inject AppData Data
 
-<div class="app">
+<div class="app" data-tab-index="@TabIndex(currentPath ?? "")" data-tab-count="@Tabs.Length">
     @* A @key miatt minden fülváltásnál újraépül, így lejátszódik a csúszó animáció. *@
     <main class="content @animClass" @key="currentPath">
         @Body

@@ -129,7 +129,9 @@ window.zseb = {
         }
     },
 
-    // Lapozás a fülek között vízszintes húzással. A .NET oldalon OnSwipe(+1 = következő, -1 = előző).
+    // Lapozás a fülek között vízszintes húzással. Húzás közben a tartalom követi az ujjat,
+    // elengedéskor átúszik a szomszédos fülre (vagy visszarugózik). A .NET oldalon
+    // OnSwipe(+1 = következő, -1 = előző). A fül indexét az .app data-tab-* attribútumai adják.
     swipe: {
         _attached: false,
 
@@ -138,27 +140,81 @@ window.zseb = {
             if (sw._attached) return;
             sw._attached = true;
 
-            let sx = 0, sy = 0, st = 0, ok = false;
+            const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            let sx = 0, sy = 0, st = 0, dx = 0, width = 1;
+            let active = false, decided = false, dragging = false;
+            let canPrev = false, canNext = false, el = null;
+
+            function reset(target) {
+                target.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s ease-out';
+                target.style.transform = '';
+                target.style.opacity = '';
+                setTimeout(function () { target.style.transition = ''; target.style.willChange = ''; }, 260);
+            }
+
             document.addEventListener('touchstart', function (e) {
-                if (e.touches.length !== 1) { ok = false; return; }
+                active = decided = dragging = false;
+                dx = 0;
+                if (e.touches.length !== 1) return;
                 const t = e.target;
                 // Szövegmezőben, vízszintesen görgethető chip-sorban és a hangpanelen nem lapozunk.
-                ok = !(t.closest && t.closest('input, textarea, select, .chips-scroll, .no-swipe, .voice-sheet'));
+                if (t.closest && t.closest('input, textarea, select, .chips-scroll, .no-swipe, .voice-sheet')) return;
+                const app = document.querySelector('.app');
+                el = document.querySelector('main.content');
+                if (!app || !el) return;
+                const idx = parseInt(app.getAttribute('data-tab-index') || '-1', 10);
+                const cnt = parseInt(app.getAttribute('data-tab-count') || '0', 10);
+                if (idx < 0) return;
+                canPrev = idx > 0;
+                canNext = idx < cnt - 1;
+                width = el.getBoundingClientRect().width || window.innerWidth;
                 sx = e.touches[0].clientX;
                 sy = e.touches[0].clientY;
                 st = Date.now();
+                active = true;
             }, { passive: true });
 
-            document.addEventListener('touchend', function (e) {
-                if (!ok) return;
-                ok = false;
-                const t = e.changedTouches[0];
-                const dx = t.clientX - sx;
-                const dy = t.clientY - sy;
-                if (Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.6 && Date.now() - st < 700) {
-                    dotnet.invokeMethodAsync('OnSwipe', dx < 0 ? 1 : -1);
+            document.addEventListener('touchmove', function (e) {
+                if (!active || e.touches.length !== 1) return;
+                const ddx = e.touches[0].clientX - sx;
+                const ddy = e.touches[0].clientY - sy;
+                if (!decided) {
+                    if (Math.abs(ddx) < 8 && Math.abs(ddy) < 8) return;
+                    decided = true;
+                    dragging = Math.abs(ddx) > Math.abs(ddy) * 1.2;   // vízszintes szándék?
+                    if (!dragging) { active = false; return; }        // függőleges görgetés marad
+                    el.style.transition = 'none';
+                    el.style.willChange = 'transform';
                 }
-            }, { passive: true });
+                e.preventDefault();                                   // húzás közben ne görgessen
+                dx = ddx;
+                const allowed = (dx < 0 && canNext) || (dx > 0 && canPrev);
+                const shown = allowed ? dx : dx * 0.25;               // szélső fülnél ellenállás
+                el.style.transform = 'translateX(' + shown + 'px)';
+                el.style.opacity = String(1 - Math.min(Math.abs(shown) / width, 1) * 0.35);
+            }, { passive: false });
+
+            function end() {
+                if (!active || !dragging) { active = false; return; }
+                active = dragging = false;
+                const target = el;
+                const dir = dx < 0 ? 1 : -1;
+                const allowed = (dir === 1 && canNext) || (dir === -1 && canPrev);
+                const velocity = Math.abs(dx) / Math.max(1, Date.now() - st);   // px / ms
+                const go = allowed && (Math.abs(dx) > width * 0.28 || (Math.abs(dx) > 40 && velocity > 0.45));
+                if (!go) { reset(target); return; }
+
+                // Átúszás: a mostani felület kicsúszik, az új a másik oldalról érkezik (CSS animáció).
+                target.style.transition = reduce ? 'none' : 'transform .17s ease-in, opacity .17s ease-in';
+                target.style.transform = 'translateX(' + (dir === 1 ? -width : width) + 'px)';
+                target.style.opacity = '0.25';
+                setTimeout(function () {
+                    dotnet.invokeMethodAsync('OnSwipe', dir).catch(function () { reset(target); });
+                }, reduce ? 0 : 160);
+            }
+
+            document.addEventListener('touchend', end, { passive: true });
+            document.addEventListener('touchcancel', end, { passive: true });
         }
     }
 };
