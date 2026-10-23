@@ -366,6 +366,9 @@ input, textarea { font-size: 17px; }
     color: var(--text);
 }
 
+.speech-status { display: block; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text); opacity: 0.85; }
+.voice-sheet .speech-status { margin: -6px 0 10px; }
+
 .speech-hint.listening { color: var(--danger); font-weight: 600; }
 
 .check {

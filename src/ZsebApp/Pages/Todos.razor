@@ -17,7 +17,7 @@
 <div class="page">
     <form class="add-row" @onsubmit="Add">
         <input class="input" placeholder="@(listening ? "Hallgatlak…" : "Új teendő…")" maxlength="200" enterkeyhint="done"
-               @bind="newTitle" @bind:event="oninput" aria-label="Új teendő" />
+               @bind="newTitle" @bind:event="oninput" @bind:after="OnTitleInput" aria-label="Új teendő" />
         @* A kattintást a zseb.js kezeli (a mikrofont csak közvetlen érintés indíthatja). *@
         <button type="button" class="icon-btn mic @(listening ? "listening" : null)" @ref="micButton"
                 aria-label="@(listening ? "Felvétel leállítása" : "Feladat rögzítése hanggal")"
@@ -31,7 +31,13 @@
 
     @if (listening)
     {
-        <p class="speech-hint listening" role="status">Mondd a feladatot, a végén mondd: „vége” – és elmentem.</p>
+        <p class="speech-hint listening" role="status">
+            Mondd a feladatot, a végén mondd: „vége” – és elmentem.
+            @if (speechStatus is not null)
+            {
+                <span class="speech-status">@speechStatus</span>
+            }
+        </p>
     }
     else if (speechHint is not null)
     {
@@ -79,6 +85,8 @@
     private DotNetObjectReference<Todos>? selfRef;
     private bool listening;
     private string? speechHint;
+    private string? speechStatus;
+    private CancellationTokenSource? stopWordCts;
 
     private int DoneCount => Data.Todos.Count(t => t.Done);
     private int OpenCount => Data.Todos.Count - DoneCount;
@@ -111,6 +119,44 @@
     {
         listening = true;
         speechHint = null;
+        speechStatus = null;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechStatus(string kind)
+    {
+        speechStatus = SpeechText.StatusMessage(kind);
+        StateHasChanged();
+    }
+
+    // Billentyűzetes diktálás (vagy gépelés) után: ha a szöveg „vége” szóra végződik és
+    // 1,5 mp-ig nem változik, a teendő automatikusan mentésre kerül.
+    private void OnTitleInput()
+    {
+        stopWordCts?.Cancel();
+        if (listening || !SpeechText.TryStripStopWord(newTitle, out _)) return;
+        var cts = stopWordCts = new CancellationTokenSource();
+        _ = SaveAfterPauseAsync(cts.Token);
+    }
+
+    private async Task SaveAfterPauseAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(1500, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!SpeechText.TryStripStopWord(newTitle, out var rest)) return;
+        var title = SpeechText.Clean(rest);
+        if (title.Length == 0) return;
+        newTitle = "";
+        speechHint = $"Mentve: {title}";
+        await Data.AddTodoAsync(title);
         StateHasChanged();
     }
 
@@ -126,6 +172,7 @@
     public async Task OnSpeechEnd(string text, bool committed)
     {
         listening = false;
+        speechStatus = null;
         var cleaned = SpeechText.Clean(text);
         if (committed && cleaned.Length > 0)
         {
@@ -146,6 +193,7 @@
     public void OnSpeechError(string code)
     {
         listening = false;
+        speechStatus = null;
         speechHint = SpeechText.ErrorMessage(code);
         StateHasChanged();
     }
@@ -163,6 +211,7 @@
     public async ValueTask DisposeAsync()
     {
         Data.TodosChanged -= OnTodosChanged;
+        stopWordCts?.Cancel();
         try
         {
             await JS.InvokeVoidAsync("zseb.speech.detachDoubleTap");
