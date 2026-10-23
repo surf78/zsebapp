@@ -31,12 +31,12 @@ public sealed class Expense
     public string Description { get; set; } = "";
 }
 
-/// <summary>Egy hónap számlája / utalása, pl. Ház (Petróczy) – Gázszámla – 2026-10 – Rendezetlen – 12 340 Ft.</summary>
+/// <summary>Egy hónap számlája / utalása, pl. Ház (Petrőczy) – Gázszámla – 2026-10 – Rendezetlen – 12 340 Ft.</summary>
 public sealed class Bill
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    /// <summary>Csoport, pl. "Ház (Petróczy)", "Lakás (Székfű)", "Rendszeres utalás". Üres = Egyéb.</summary>
+    /// <summary>Csoport, pl. "Ház (Petrőczy)", "Lakás (Székfű)", "Rendszeres utalás". Üres = Egyéb.</summary>
     public string Group { get; set; } = "";
     /// <summary>Összeg forintban.</summary>
     public int Amount { get; set; }
@@ -81,10 +81,10 @@ public static class BillDefaults
     /// <summary>Az első indításkor létrehozott fix tételek. Később szabadon törölhetők, bővíthetők.</summary>
     public static List<BillTemplate> Create() =>
     [
-        new() { Group = "Ház (Petróczy)", Name = "Gázszámla" },
-        new() { Group = "Ház (Petróczy)", Name = "Víz" },
-        new() { Group = "Ház (Petróczy)", Name = "Áram" },
-        new() { Group = "Ház (Petróczy)", Name = "Hulladékszállítás" },
+        new() { Group = "Ház (Petrőczy)", Name = "Gázszámla" },
+        new() { Group = "Ház (Petrőczy)", Name = "Víz" },
+        new() { Group = "Ház (Petrőczy)", Name = "Áram" },
+        new() { Group = "Ház (Petrőczy)", Name = "Hulladékszállítás" },
         new() { Group = "Lakás (Székfű)", Name = "Gázszámla" },
         new() { Group = "Lakás (Székfű)", Name = "Víz" },
         new() { Group = "Lakás (Székfű)", Name = "Áram" },

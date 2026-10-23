@@ -62,6 +62,55 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         {
             BillTemplates = templates;
         }
+
+        if (MigrateGroupNames())
+        {
+            await SaveBillTemplatesAsync();
+            await SaveBillsAsync();
+        }
+    }
+
+    // ---------- Csoportnevek ----------
+
+    /// <summary>Korábbi csoportnevek és az új nevük (pl. elírás javítása).</summary>
+    private static readonly (string Old, string New)[] GroupRenames =
+    [
+        ("Ház (Petróczy)", "Ház (Petrőczy)"),
+    ];
+
+    private bool NeedsGroupMigration() =>
+        GroupRenames.Any(r => BillTemplates.Any(t => t.Group == r.Old) || Bills.Any(b => b.Group == r.Old));
+
+    /// <summary>A régi csoportneveket átírja az újra. Igaz, ha változott valami.</summary>
+    private bool MigrateGroupNames()
+    {
+        var changed = false;
+        foreach (var (oldName, newName) in GroupRenames)
+        {
+            foreach (var t in BillTemplates.Where(t => t.Group == oldName)) { t.Group = newName; changed = true; }
+            foreach (var b in Bills.Where(b => b.Group == oldName)) { b.Group = newName; changed = true; }
+        }
+        return changed;
+    }
+
+    /// <summary>A közös tárból még a régi név jött: kis késleltetéssel átírjuk és visszamentjük (a felhőbe is).</summary>
+    private async Task MigrateGroupNamesLaterAsync()
+    {
+        await Task.Delay(300);
+        if (!MigrateGroupNames()) return;
+        await SaveBillTemplatesAsync();
+        await SaveBillsAsync();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Csoport átnevezése: a fix tételeknél és a már rögzített számláknál is.</summary>
+    public async Task RenameBillGroupAsync(string oldName, string newName)
+    {
+        static bool Same(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        foreach (var t in BillTemplates.Where(t => Same(t.Group, oldName))) t.Group = newName;
+        foreach (var b in Bills.Where(b => b.Group.Length > 0 && Same(b.Group, oldName))) b.Group = newName;
+        await SaveBillTemplatesAsync();
+        await SaveBillsAsync();
     }
 
     public Task SaveTodosAsync() => SaveAsync(TodosKey, Todos, AppJsonContext.Default.ListTodoItem);
@@ -120,6 +169,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             _ => json,
         };
         if (syncName == "todos") TodosChanged?.Invoke();
+        if (syncName is "bills" or "billtemplates" && NeedsGroupMigration()) _ = MigrateGroupNamesLaterAsync();
         Changed?.Invoke();
         return result;
     }

@@ -144,14 +144,106 @@
             {
                 @if (PropertyKind(g.Name) is { } kind)
                 {
-                    @* Ház / Lakás / Rendszeres utalás csoport: kiemelt fejléc ikonnal és a rendezetlen összeggel *@
-                    <div class="group-header @kind">
+                    var open = Same(managing, g.Name);
+                    @* Ház / Lakás / Rendszeres utalás csoport: kiemelt fejléc; koppintásra a csoport fix tételei szerkeszthetők *@
+                    <button type="button" class="group-header @kind @(open ? "open" : null)" @onclick="() => ToggleManage(g.Name)"
+                            aria-expanded="@(open ? "true" : "false")" aria-label="@($"{g.Name} – fix tételek szerkesztése")">
                         <span class="group-icon"><Icon Name="@GroupIcon(kind)" Size="20" /></span>
-                        <div class="group-title">
+                        <span class="group-title">
                             <strong>@g.Name</strong>
                             <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
-                        </div>
-                    </div>
+                        </span>
+                        <span class="group-edit"><Icon Name="@(open ? "chevron-down" : "edit")" Size="18" Class="@(open ? "rotate-180" : null)" /></span>
+                    </button>
+
+                    @if (open)
+                    {
+                        var items = Data.BillTemplates.Where(t => Same(t.Group, g.Name)).ToList();
+                        <section class="card form group-manage">
+                            <p class="form-title">Fix tételek – @g.Name</p>
+
+                            @if (items.Count == 0)
+                            {
+                                <p class="form-note">Ebben a csoportban még nincs fix tétel.</p>
+                            }
+                            else
+                            {
+                                <ul class="list template-list">
+                                    @foreach (var t in items)
+                                    {
+                                        <li class="row" @key="t.Id">
+                                            @if (teId == t.Id)
+                                            {
+                                                <div class="template-edit">
+                                                    <input class="input" placeholder="Megnevezés" maxlength="80" @bind="teName" @bind:event="oninput" aria-label="Megnevezés" />
+                                                    <div class="field-row">
+                                                        <input class="input" inputmode="numeric" placeholder="Összeg (Ft)" maxlength="12" @bind="teAmount" @bind:event="oninput" aria-label="Összeg" />
+                                                        <input class="input small-input" inputmode="numeric" placeholder="Határidő napja" maxlength="2" @bind="teDueDay" @bind:event="oninput" aria-label="Határidő napja" />
+                                                    </div>
+                                                    @if (teError is not null)
+                                                    {
+                                                        <p class="error">@teError</p>
+                                                    }
+                                                    <div class="btn-row">
+                                                        <button type="button" class="btn" @onclick="CancelTemplateEdit">Mégse</button>
+                                                        <button type="button" class="btn primary" @onclick="() => SaveTemplateEdit(t)">Mentés</button>
+                                                    </div>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="row-main tappable-area" @onclick="() => StartTemplateEdit(t)">
+                                                    <div class="bill-name">@t.Name</div>
+                                                    <div class="row-sub">
+                                                        <span>@(t.DefaultAmount is { } a ? Fmt.Ft(a) : "változó összeg")</span>
+                                                        @if (t.DueDay is { } dd)
+                                                        {
+                                                            <span>· határidő: minden hó @(dd).</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <button type="button" class="icon-btn ghost" @onclick="() => StartTemplateEdit(t)" aria-label="@($"{t.Name} szerkesztése")">
+                                                    <Icon Name="edit" Size="20" />
+                                                </button>
+                                                @if (confirmDeleteId == t.Id)
+                                                {
+                                                    <button type="button" class="btn danger confirm-delete" @onclick="() => DeleteTemplate(t)">Törlöd?</button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="icon-btn ghost danger" @onclick="() => confirmDeleteId = t.Id" aria-label="@($"{t.Name} törlése")">
+                                                        <Icon Name="trash" Size="20" />
+                                                    </button>
+                                                }
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+
+                            <span class="filter-label">Új tétel ebbe a csoportba</span>
+                            <input class="input" placeholder="Megnevezés, pl. Internet" maxlength="80" @bind="ngName" @bind:event="oninput" aria-label="Új tétel neve" />
+                            <div class="field-row">
+                                <input class="input" inputmode="numeric" placeholder="Összeg (Ft)" maxlength="12" @bind="ngAmount" @bind:event="oninput" aria-label="Új tétel összege" />
+                                <input class="input small-input" inputmode="numeric" placeholder="Határidő napja" maxlength="2" @bind="ngDueDay" @bind:event="oninput" aria-label="Új tétel határidejének napja" />
+                            </div>
+                            @if (ngError is not null)
+                            {
+                                <p class="error">@ngError</p>
+                            }
+                            <button type="button" class="btn primary block" @onclick="() => AddGroupTemplate(g.Name)">Hozzáadás</button>
+
+                            <span class="filter-label">Csoport neve</span>
+                            <div class="add-member">
+                                <input class="input" maxlength="40" @bind="mgGroupName" @bind:event="oninput" aria-label="Csoport neve" />
+                                <button type="button" class="btn" disabled="@(string.IsNullOrWhiteSpace(mgGroupName) || mgGroupName.Trim() == g.Name)"
+                                        @onclick="() => RenameGroup(g.Name)">Átnevezés</button>
+                            </div>
+
+                            <p class="report-note">A módosítás a még nem rögzített sorokra érvényes; a már rögzített számlák változatlanok maradnak.</p>
+                            <button type="button" class="btn block" @onclick="() => managing = null">Kész</button>
+                        </section>
+                    }
                 }
                 else
                 {
@@ -302,6 +394,20 @@
     private string tAmount = "";
     private string tDueDay = "";
     private string? tError;
+
+    // Kiemelt csoport fix tételeinek szerkesztése (a csoport fejlécére koppintva)
+    private string? managing;
+    private string mgGroupName = "";
+    private Guid? teId;
+    private string teName = "";
+    private string teAmount = "";
+    private string teDueDay = "";
+    private string? teError;
+    private Guid? confirmDeleteId;
+    private string ngName = "";
+    private string ngAmount = "";
+    private string ngDueDay = "";
+    private string? ngError;
 
     /// <summary>
     /// "house" a Ház…, "flat" a Lakás…, "transfer" a Rendszeres utalás csoportra (ezek kiemelt fejlécet kapnak), egyébként null.
@@ -547,6 +653,104 @@
     private async Task DeleteTemplate(BillTemplate t)
     {
         Data.BillTemplates.Remove(t);
+        confirmDeleteId = null;
+        if (teId == t.Id) teId = null;
         await Data.SaveBillTemplatesAsync();
+    }
+
+    // ---------- Kiemelt csoport szerkesztése ----------
+
+    private void ToggleManage(string groupName)
+    {
+        if (Same(managing, groupName))
+        {
+            managing = null;
+            return;
+        }
+        managing = groupName;
+        mgGroupName = groupName;
+        teId = null;
+        teError = null;
+        confirmDeleteId = null;
+        ngName = ngAmount = ngDueDay = "";
+        ngError = null;
+    }
+
+    /// <summary>Határidő napja: üres = nincs; különben 1–31.</summary>
+    private static bool TryParseDueDay(string text, out int? day)
+    {
+        day = null;
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        if (!int.TryParse(text.Trim(), out var d) || d is < 1 or > 31) return false;
+        day = d;
+        return true;
+    }
+
+    private void StartTemplateEdit(BillTemplate t)
+    {
+        teId = t.Id;
+        teName = t.Name;
+        teAmount = t.DefaultAmount?.ToString() ?? "";
+        teDueDay = t.DueDay?.ToString() ?? "";
+        teError = null;
+        confirmDeleteId = null;
+    }
+
+    private void CancelTemplateEdit()
+    {
+        teId = null;
+        teError = null;
+    }
+
+    private async Task SaveTemplateEdit(BillTemplate t)
+    {
+        var n = teName.Trim();
+        if (n.Length == 0)
+        {
+            teError = "Add meg a megnevezést.";
+            return;
+        }
+        if (!TryParseDueDay(teDueDay, out var due))
+        {
+            teError = "A határidő napja 1 és 31 közötti szám legyen.";
+            return;
+        }
+        var amount = ParseAmount(teAmount);
+        t.Name = n;
+        t.DefaultAmount = amount is > 0 ? amount : null;
+        t.DueDay = due;
+        teId = null;
+        teError = null;
+        await Data.SaveBillTemplatesAsync();
+    }
+
+    private async Task AddGroupTemplate(string groupName)
+    {
+        var n = ngName.Trim();
+        if (n.Length == 0)
+        {
+            ngError = "Add meg az új tétel nevét.";
+            return;
+        }
+        if (!TryParseDueDay(ngDueDay, out var due))
+        {
+            ngError = "A határidő napja 1 és 31 közötti szám legyen.";
+            return;
+        }
+        var amount = ParseAmount(ngAmount);
+        Data.BillTemplates.Add(new BillTemplate { Group = groupName, Name = n, DefaultAmount = amount is > 0 ? amount : null, DueDay = due });
+        ngName = ngAmount = ngDueDay = "";
+        ngError = null;
+        await Data.SaveBillTemplatesAsync();
+    }
+
+    private async Task RenameGroup(string oldName)
+    {
+        var newName = mgGroupName.Trim();
+        if (newName.Length == 0 || newName == oldName) return;
+        await Data.RenameBillGroupAsync(oldName, newName);
+        if (Same(group, oldName)) group = newName;
+        managing = newName;
+        mgGroupName = newName;
     }
 }

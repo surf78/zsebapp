@@ -782,6 +782,13 @@ a.action { text-decoration: none; }
 
 .group-header.house { --group: #ff7a3d; --group-bg: linear-gradient(135deg, #ffb238, #ff7a3d); }
 .group-header.flat { --group: #7b61ff; --group-bg: linear-gradient(135deg, #a18bff, #6a4cf0); }
+button.group-header { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.group-header:active { transform: scale(0.99); }
+.group-title { flex: 1; }
+.group-edit { display: inline-flex; flex: none; color: var(--group); }
+.group-manage { margin-bottom: 8px; border-left: 5px solid var(--glass-border); }
+.template-edit { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; padding: 4px 0; }
+.confirm-delete { padding: 8px 12px; font-size: 14px; flex: none; }
 .group-header.transfer { --group: #0fa89a; --group-bg: linear-gradient(135deg, #3fd6b8, #0b8f8a); }
 
 .group-icon {
