@@ -956,6 +956,17 @@ a.action { text-decoration: none; }
 .action:active { background: var(--fill); }
 .action.danger { color: var(--danger); }
 
+.speech-log {
+    padding: 12px 14px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 60dvh;
+    overflow-y: auto;
+}
+
 .confirm { padding: 16px; }
 .confirm p { margin: 0 0 12px; }
 

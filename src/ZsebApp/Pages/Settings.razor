@@ -137,6 +137,19 @@
         <p class="hint">@clearError</p>
     }
 
+    <p class="section-label">Hangfelismerés napló</p>
+    <section class="card actions">
+        <button class="action" @onclick="ShowSpeechLog">
+            <Icon Name="mic" Size="20" />
+            <span>@(speechLog is null ? "Napló megjelenítése" : "Napló frissítése")</span>
+        </button>
+    </section>
+    @if (speechLog is not null)
+    {
+        <pre class="card speech-log">@speechLog</pre>
+        <p class="hint">Ha a mikrofon nem működik: próbáld ki a Teendők oldalon, majd gyere vissza ide, és küldj képet erről a naplóról.</p>
+    }
+
     <p class="section-label">Telepítés iPhone-ra</p>
     <section class="card text-card">
         <ol>
@@ -152,6 +165,10 @@
 
 @code {
     private Backup? pendingImport;
+    private string? speechLog;
+
+    private async Task ShowSpeechLog() =>
+        speechLog = await JS.InvokeAsync<string>("zseb.speech.getLog");
     private string? message;
 
     protected override Task OnInitializedAsync() => Data.EnsureLoadedAsync();

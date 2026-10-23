@@ -63,6 +63,10 @@ public static class SpeechText
         "language-not-supported" => "A magyar hangfelismerés nem érhető el ezen az eszközön.",
         "aborted" => null,
         "no-result" => StatusMessage("no-result"),
+        "no-start" =>
+            "Az iPhone nem indította el a hangfelismerést. Koppints újra a mikrofonra; ha így sem megy, " +
+            "a billentyűzet mikrofon gombjával diktálj – a „vége” szóra ott is ment. " +
+            "(Részletek: Beállítások → Hangfelismerés napló.)",
         _ => $"A hangfelismerés nem sikerült ({code}). A billentyűzet mikrofon gombjával is diktálhatsz.",
     };
 }

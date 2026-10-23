@@ -34,6 +34,30 @@ window.zseb = {
     // az OnSpeechEnd(text, true) jelzi, hogy a szöveget menteni kell (a záró szó nélkül).
     speech: {
         _session: null,
+        _log: [],
+
+        // Diagnosztikai napló (Beállítások → Hangfelismerés napló), hogy iPhone-on is lássuk, mi történik.
+        log: function (msg) {
+            const l = window.zseb.speech._log;
+            const d = new Date();
+            const t = d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+            l.push(t + '  ' + msg);
+            if (l.length > 80) l.shift();
+        },
+
+        getLog: function () {
+            const standalone = (window.navigator.standalone === true) ||
+                (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+            const head = [
+                'Böngésző: ' + navigator.userAgent,
+                'Főképernyős app: ' + (standalone ? 'igen' : 'nem'),
+                'SpeechRecognition: ' + (window.SpeechRecognition ? 'van' : 'nincs') +
+                    ', webkitSpeechRecognition: ' + (window.webkitSpeechRecognition ? 'van' : 'nincs'),
+                'Internet: ' + (navigator.onLine ? 'van' : 'nincs'),
+                '----'
+            ];
+            return head.concat(window.zseb.speech._log).join('\n');
+        },
 
         isSupported: function () {
             return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -54,28 +78,49 @@ window.zseb = {
         // Állapotjelzés a .NET felé: OnSpeechStatus('audio' | 'sound' | 'speech' | 'no-result').
         toggle: function (dotnet, lang, stopWord) {
             const s = window.zseb.speech;
-            if (s._session) {                                   // második koppintás: leállítás
-                s._session.userStop = true;
-                try { s._session.rec && s._session.rec.stop(); } catch (e) { }
-                return;
+            s.log('koppintás');
+            if (s._session) {
+                const cur = s._session;
+                if (cur.userStop || !cur.gotStart && Date.now() - cur.started > 4000) {
+                    // Beragadt (az iPhone nem küldött több eseményt): eldobjuk, és újat indítunk.
+                    s.log('beragadt felvétel törölve, új indul');
+                    s.cancel();
+                    cur.dotnet.invokeMethodAsync('OnSpeechEnd', cur.text, false);
+                } else {
+                    // Második koppintás: leállítás, az eddigi szöveg megmarad.
+                    s.log('leállítás kérése');
+                    cur.userStop = true;
+                    try { cur.rec && cur.rec.stop(); } catch (e) { }
+                    // Ha 2 mp alatt sem ér véget, mi zárjuk le.
+                    setTimeout(function () {
+                        if (s._session === cur) {
+                            s.log('leállítás nem fejeződött be, lezárás');
+                            s.cancel();
+                            cur.dotnet.invokeMethodAsync('OnSpeechEnd', cur.text, false);
+                        }
+                    }, 2000);
+                    return;
+                }
             }
 
             const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!Rec) {
+                s.log('nincs SpeechRecognition');
                 dotnet.invokeMethodAsync('OnSpeechError', 'unsupported');
                 return;
             }
 
             const sess = {
-                rec: null, prefix: '', text: '', committed: false, userStop: false,
-                gotResult: false, restarts: 0, lastError: null, started: Date.now(),
-                watchdog: 0, noResultTimer: 0
+                dotnet: dotnet, rec: null, prefix: '', text: '', committed: false, userStop: false,
+                gotStart: false, gotResult: false, restarts: 0, lastError: null, started: Date.now(),
+                watchdog: 0, noResultTimer: 0, noStartTimer: 0
             };
             s._session = sess;
 
             const status = function (kind) { dotnet.invokeMethodAsync('OnSpeechStatus', kind).catch(function () { }); };
-            const clearTimers = function () { clearTimeout(sess.watchdog); clearTimeout(sess.noResultTimer); };
+            const clearTimers = function () { clearTimeout(sess.watchdog); clearTimeout(sess.noResultTimer); clearTimeout(sess.noStartTimer); };
             const finish = function () {
+                s.log('befejezés (szöveg: "' + sess.text + '", mentés: ' + sess.committed + ')');
                 clearTimers();
                 if (s._session === sess) s._session = null;
                 // Semmilyen szöveg nem jött, és nem a felhasználó állította le: jelezzük, mi lehet a gond.
@@ -91,10 +136,10 @@ window.zseb = {
                 rec.maxAlternatives = 1;
                 sess.rec = rec;
 
-                rec.onstart = function () { if (sess.restarts === 0) dotnet.invokeMethodAsync('OnSpeechStart'); };
-                rec.onaudiostart = function () { if (!sess.gotResult) status('audio'); };
-                rec.onsoundstart = function () { if (!sess.gotResult) status('sound'); };
-                rec.onspeechstart = function () { if (!sess.gotResult) status('speech'); };
+                rec.onstart = function () { sess.gotStart = true; s.log('onstart'); };
+                rec.onaudiostart = function () { s.log('onaudiostart'); if (!sess.gotResult) status('audio'); };
+                rec.onsoundstart = function () { s.log('onsoundstart'); if (!sess.gotResult) status('sound'); };
+                rec.onspeechstart = function () { s.log('onspeechstart'); if (!sess.gotResult) status('speech'); };
                 rec.onresult = function (e) {
                     if (sess.committed) return;
                     // A teljes eredménylistából építjük újra (iOS-en így nincs duplázás), elé az eddigi szöveg.
@@ -103,14 +148,16 @@ window.zseb = {
                     const r = s.stripStopWord(full, stopWord);
                     sess.text = r.text;
                     sess.gotResult = true;
+                    s.log('onresult: "' + raw + '"');
                     dotnet.invokeMethodAsync('OnSpeechResult', sess.text);
                     if (r.hit) {
                         sess.committed = true;
                         try { rec.stop(); } catch (err) { }
                     }
                 };
-                rec.onerror = function (e) { sess.lastError = e.error || 'unknown'; };
+                rec.onerror = function (e) { sess.lastError = e.error || 'unknown'; s.log('onerror: ' + sess.lastError); };
                 rec.onend = function () {
+                    s.log('onend');
                     if (s._session !== sess) return;            // közben megszakították
                     sess.prefix = sess.text;
                     const err = sess.lastError;
@@ -124,10 +171,12 @@ window.zseb = {
                     if (stopWord && !sess.committed && !sess.userStop &&
                         Date.now() - sess.started < 60000 && sess.restarts < 30) {
                         sess.restarts++;
-                        try { startOne(); return; } catch (e2) { /* nem indult újra: befejezzük */ }
+                        s.log('újraindítás #' + sess.restarts);
+                        try { startOne(); return; } catch (e2) { s.log('újraindítás hiba: ' + e2); }
                     }
                     finish();
                 };
+                s.log('start() lang=' + lang);
                 rec.start();
             };
 
@@ -137,12 +186,25 @@ window.zseb = {
             }, 65000);
             sess.noResultTimer = setTimeout(function () { if (!sess.gotResult && s._session === sess) status('no-result'); }, 7000);
 
+            // Azonnali visszajelzés a felületen (nem várunk az iPhone onstart eseményére).
+            dotnet.invokeMethodAsync('OnSpeechStart');
+            sess.noStartTimer = setTimeout(function () {
+                if (s._session === sess && !sess.gotStart) {
+                    s.log('4 mp alatt sem indult el a felismerés');
+                    s.cancel();
+                    dotnet.invokeMethodAsync('OnSpeechError', 'no-start');
+                    dotnet.invokeMethodAsync('OnSpeechEnd', sess.text, false);
+                }
+            }, 4000);
+
             try {
                 startOne();
             } catch (err) {
+                s.log('start() hiba: ' + err);
                 clearTimers();
                 s._session = null;
                 dotnet.invokeMethodAsync('OnSpeechError', 'start-failed');
+                dotnet.invokeMethodAsync('OnSpeechEnd', '', false);
             }
         },
 
@@ -202,6 +264,7 @@ window.zseb = {
             s._session = null;
             clearTimeout(sess.watchdog);
             clearTimeout(sess.noResultTimer);
+            clearTimeout(sess.noStartTimer);
             const rec = sess.rec;
             if (rec) {
                 rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
