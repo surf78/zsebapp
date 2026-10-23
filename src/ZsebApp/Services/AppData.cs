@@ -108,7 +108,9 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     {
         static bool Same(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
         foreach (var t in BillTemplates.Where(t => Same(t.Group, oldName))) t.Group = newName;
-        foreach (var b in Bills.Where(b => b.Group.Length > 0 && Same(b.Group, oldName))) b.Group = newName;
+        // Az Egyéb csoportba a csoport nélküli ("") számlák is beletartoznak.
+        var other = Same(oldName, BillDefaults.OtherGroup);
+        foreach (var b in Bills.Where(b => b.Group.Trim().Length > 0 ? Same(b.Group, oldName) : other)) b.Group = newName;
         await SaveBillTemplatesAsync();
         await SaveBillsAsync();
     }

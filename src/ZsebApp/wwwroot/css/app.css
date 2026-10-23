@@ -789,6 +789,10 @@ button.group-header:active { transform: scale(0.99); }
 .group-manage { margin-bottom: 8px; border-left: 5px solid var(--glass-border); }
 .template-edit { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; padding: 4px 0; }
 .confirm-delete { padding: 8px 12px; font-size: 14px; flex: none; }
+.group-header.other { --group: #4f7393; --group-bg: linear-gradient(135deg, #8eaac4, #4a6b8a); }
+.group-paid { display: flex; flex-direction: column; align-items: flex-end; flex: none; line-height: 1.15; }
+.group-paid b { font-size: 17px; font-weight: 800; color: var(--paid); white-space: nowrap; }
+.group-paid small { font-size: 11.5px; color: var(--muted); }
 .group-header.transfer { --group: #0fa89a; --group-bg: linear-gradient(135deg, #3fd6b8, #0b8f8a); }
 
 .group-icon {
