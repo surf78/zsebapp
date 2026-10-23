@@ -147,19 +147,44 @@ public static class MeterTypes
 }
 
 /// <summary>Teljes adatmentés (export / import).</summary>
+/// <remarks>
+/// Kétféle mentés van: <see cref="BackupKinds.Data"/> (teendők, jegyzetek, kiadások, számlák, mérőórák) és
+/// <see cref="BackupKinds.Settings"/> (fix számlatételek + törlési jelszó). A régi, típus nélküli mentés mindent tartalmaz.
+/// </remarks>
 public sealed class Backup
 {
     public int Version { get; set; } = 1;
+    /// <summary>"data" | "settings" | null (régi, teljes mentés).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Kind { get; set; }
     public DateTime ExportedAt { get; set; } = DateTime.Now;
-    public List<TodoItem> Todos { get; set; } = [];
-    public List<Note> Notes { get; set; } = [];
-    public List<Expense> Expenses { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<TodoItem>? Todos { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<Note>? Notes { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<Expense>? Expenses { get; set; } = [];
     /// <summary>Régebbi mentésekben nincs benne – ilyenkor üres lista.</summary>
-    public List<Bill> Bills { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<Bill>? Bills { get; set; } = [];
     /// <summary>Régebbi mentésekben nincs benne – ilyenkor üres lista.</summary>
-    public List<MeterReading> Meters { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<MeterReading>? Meters { get; set; } = [];
     /// <summary>Fix számlatételek. Régebbi mentésekben nincs benne (null) – ilyenkor a jelenlegiek maradnak.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public List<BillTemplate>? BillTemplates { get; set; }
+    /// <summary>Program-beállítások (törlési jelszó). Csak a beállítás-mentésben van.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public AppSettings? Settings { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsSettings => Kind == BackupKinds.Settings;
+}
+
+public static class BackupKinds
+{
+    public const string Data = "data";
+    public const string Settings = "settings";
 }
 
 public sealed record Category(string Name, string Color);

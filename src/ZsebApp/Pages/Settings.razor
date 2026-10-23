@@ -48,9 +48,13 @@
 
     <p class="section-label">Mentés és visszaállítás</p>
     <section class="card actions">
-        <button class="action" @onclick="Export">
+        <button class="action" @onclick="ExportData">
             <Icon Name="download" Size="20" />
-            <span>Mentés fájlba (JSON)</span>
+            <span>Adatok mentése fájlba (JSON)</span>
+        </button>
+        <button class="action" @onclick="ExportSettings">
+            <Icon Name="download" Size="20" />
+            <span>Beállítások mentése fájlba (JSON)</span>
         </button>
         <label class="action">
             <Icon Name="upload" Size="20" />
@@ -62,14 +66,25 @@
     @if (pendingImport is not null)
     {
         <section class="card confirm">
-            <p>
-                A fájlban <strong>@pendingImport.Todos.Count</strong> teendő,
-                <strong>@pendingImport.Notes.Count</strong> jegyzet,
-                <strong>@pendingImport.Expenses.Count</strong> kiadás,
-                <strong>@pendingImport.Bills.Count</strong> számla és
-                <strong>@pendingImport.Meters.Count</strong> mérőóra-leolvasás van@(pendingImport.BillTemplates is { } bt ? $", valamint {bt.Count} fix számlatétel" : "").
-                A visszaállítás <strong>felülírja</strong> a jelenlegi adatokat.
-            </p>
+            @if (pendingImport.IsSettings)
+            {
+                <p>
+                    Ez egy <strong>beállítás-mentés</strong>: <strong>@(pendingImport.BillTemplates?.Count ?? 0)</strong> fix számlatétel
+                    (@(pendingImport.BillTemplates?.Select(t => t.Group).Distinct().Count() ?? 0) csoportban)@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszó" : "").
+                    A visszaállítás <strong>felülírja</strong> a jelenlegi fix tételeket@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszót" : ""); az adatok (teendők, számlák stb.) nem változnak.
+                </p>
+            }
+            else
+            {
+                <p>
+                    Ez egy <strong>adatmentés</strong>: <strong>@(pendingImport.Todos?.Count ?? 0)</strong> teendő,
+                    <strong>@(pendingImport.Notes?.Count ?? 0)</strong> jegyzet,
+                    <strong>@(pendingImport.Expenses?.Count ?? 0)</strong> kiadás,
+                    <strong>@(pendingImport.Bills?.Count ?? 0)</strong> számla és
+                    <strong>@(pendingImport.Meters?.Count ?? 0)</strong> mérőóra-leolvasás@(pendingImport.Kind is null && pendingImport.BillTemplates is { } bt ? $", valamint {bt.Count} fix számlatétel" : "").
+                    A visszaállítás <strong>felülírja</strong> a jelenlegi adatokat@(Sync.State.Connected ? " – a közös tárban is" : "").
+                </p>
+            }
             <div class="btn-row">
                 <button class="btn" @onclick="() => pendingImport = null">Mégse</button>
                 <button class="btn primary" @onclick="ConfirmImport">Visszaállítás</button>
@@ -194,14 +209,20 @@
         base.Dispose();
     }
 
-    private async Task Export()
+    private Task ExportData() =>
+        Export(Data.CreateDataBackup(), $"zsebapp-adatok_{Fmt.FileStamp(DateTime.Now)}.json", "Adatmentés");
+
+    private Task ExportSettings() =>
+        Export(Data.CreateSettingsBackup(), $"zsebapp-beallitasok_{Fmt.FileStamp(DateTime.Now)}.json", "Beállítás-mentés");
+
+    private async Task Export(Backup backup, string fileName, string what)
     {
-        var json = JsonSerializer.Serialize(Data.CreateBackup(), AppJsonContext.Default.Backup);
-        var result = await JS.InvokeAsync<string>("zseb.saveFile", $"zsebapp-mentes_{Fmt.FileStamp(DateTime.Now)}.json", json);
+        var json = JsonSerializer.Serialize(backup, AppJsonContext.Default.Backup);
+        var result = await JS.InvokeAsync<string>("zseb.saveFile", fileName, json);
         message = result switch
         {
-            "shared" => "Mentés kész.",
-            "downloaded" => "A mentés letöltve.",
+            "shared" => $"{what} kész.",
+            "downloaded" => $"{what} letöltve ({fileName}).",
             _ => null,
         };
     }
@@ -218,11 +239,16 @@
                 message = "A fájl üres.";
                 return;
             }
-            backup.Todos ??= [];
-            backup.Notes ??= [];
-            backup.Expenses ??= [];
-            backup.Bills ??= [];
-            backup.Meters ??= [];
+            if (backup.Kind is not (null or BackupKinds.Data or BackupKinds.Settings))
+            {
+                message = "Ismeretlen mentéstípus – lehet, hogy újabb app-verzióval készült.";
+                return;
+            }
+            if (backup.IsSettings && backup.BillTemplates is null && backup.Settings is null)
+            {
+                message = "A beállítás-mentés üres.";
+                return;
+            }
             pendingImport = backup;
         }
         catch (Exception)

@@ -245,26 +245,63 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
 
     // ---------- Mentés / visszaállítás ----------
 
-    public Backup CreateBackup() => new()
+    /// <summary>Adatmentés: teendők, jegyzetek, kiadások, számlák, mérőórák.</summary>
+    public Backup CreateDataBackup() => new()
     {
+        Kind = BackupKinds.Data,
         ExportedAt = DateTime.Now,
         Todos = Todos,
         Notes = Notes,
         Expenses = Expenses,
         Bills = Bills,
         Meters = Meters,
-        BillTemplates = BillTemplates,
     };
 
+    /// <summary>Beállítás-mentés: fix számlatételek (csoportokkal) és a törlési jelszó.</summary>
+    public Backup CreateSettingsBackup() => new()
+    {
+        Kind = BackupKinds.Settings,
+        ExportedAt = DateTime.Now,
+        Todos = null,
+        Notes = null,
+        Expenses = null,
+        Bills = null,
+        Meters = null,
+        BillTemplates = BillTemplates,
+        Settings = Settings,
+    };
+
+    /// <summary>
+    /// Visszaállítás: a beállítás-mentés csak a fix tételeket és a jelszót írja felül, az adatmentés csak az adatokat;
+    /// a régi (típus nélküli) mentés az adatokat és – ha benne vannak – a fix tételeket.
+    /// </summary>
     public async Task RestoreAsync(Backup backup)
     {
+        if (backup.IsSettings)
+        {
+            if (backup.BillTemplates is not null)
+            {
+                BillTemplates = backup.BillTemplates;
+                MigrateGroupNames();
+                await SaveBillTemplatesAsync();
+            }
+            if (backup.Settings is not null)
+            {
+                Settings = backup.Settings;
+                await SaveSettingsAsync();
+            }
+            Changed?.Invoke();
+            return;
+        }
+
         Todos = backup.Todos ?? [];
         Notes = backup.Notes ?? [];
         Expenses = backup.Expenses ?? [];
         Bills = backup.Bills ?? [];
         Meters = backup.Meters ?? [];
-        if (backup.BillTemplates is not null)
+        if (backup.Kind is null && backup.BillTemplates is not null)
             BillTemplates = backup.BillTemplates;
+        MigrateGroupNames();
         await SaveTodosAsync();
         await SaveNotesAsync();
         await SaveExpensesAsync();
@@ -272,6 +309,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         await SaveMetersAsync();
         await SaveBillTemplatesAsync();
         TodosChanged?.Invoke();
+        Changed?.Invoke();
     }
 
     /// <summary>Minden adat törlése. A fix számlatételek visszaállnak az alapértelmezettre, a jelszó megmarad.</summary>
