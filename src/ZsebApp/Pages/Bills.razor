@@ -507,7 +507,7 @@
             fGroup = t.Group;
             fName = t.Name;
             fAmount = t.DefaultAmount?.ToString() ?? "";
-            fDue = BillViews.TemplateDueDate(t, monthKey);
+            fDue = r.DueDate;   // az előző hónap határideje továbbvive (vagy a fix tétel határidő-napja)
             fMonth = monthKey;
         }
         editorOpen = true;

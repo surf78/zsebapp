@@ -59,6 +59,30 @@ public static class BillViews
         return new DateOnly(first.Year, first.Month, Math.Clamp(day, 1, last));
     }
 
+    /// <summary>
+    /// A fix tétel határideje egy még nem rögzített hónapban: a legutóbbi korábbi hónap számlájának határidejét
+    /// viszi tovább (ugyanannyiadik napra, ugyanannyi hónap eltolással), ha az nincs, a fix tétel saját határidő-napját.
+    /// </summary>
+    public static DateOnly? CarriedDueDate(IEnumerable<Bill> bills, BillTemplate t, string monthKey)
+    {
+        if (!BillMonth.TryParse(monthKey, out var target)) return TemplateDueDate(t, monthKey);
+
+        var last = bills
+            .Where(b => b.TemplateId == t.Id && b.DueDate is not null && string.CompareOrdinal(b.EffectiveMonth, monthKey) < 0)
+            .OrderByDescending(b => b.EffectiveMonth, StringComparer.Ordinal)
+            .ThenByDescending(b => b.DueDate)
+            .FirstOrDefault();
+        if (last is null || !BillMonth.TryParse(last.EffectiveMonth, out var lastMonth))
+            return TemplateDueDate(t, monthKey);
+
+        // Pl. az októberi számla november 5-én esedékes → a novemberi december 5-én.
+        var due = last.DueDate!.Value;
+        var offset = (due.Year - lastMonth.Year) * 12 + due.Month - lastMonth.Month;
+        var first = target.AddMonths(offset);
+        var lastDay = first.AddMonths(1).AddDays(-1).Day;
+        return new DateOnly(first.Year, first.Month, Math.Min(due.Day, lastDay));
+    }
+
     private static BillRow FromBill(Bill b) => new(b, null, GroupOf(b), b.Name, b.Amount, b.Paid, b.DueDate);
 
     /// <summary>Egy hónap nézete: a fix tételek (rögzítve vagy még kitöltendőként) és az egyéb számlák, csoportosítva.</summary>
@@ -78,7 +102,7 @@ public static class BillViews
             }
             else
             {
-                rows.Add(new BillRow(null, t, t.Group, t.Name, t.DefaultAmount ?? 0, false, TemplateDueDate(t, monthKey)));
+                rows.Add(new BillRow(null, t, t.Group, t.Name, t.DefaultAmount ?? 0, false, CarriedDueDate(bills, t, monthKey)));
             }
         }
 
