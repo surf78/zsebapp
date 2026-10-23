@@ -45,7 +45,36 @@
     </div>
     <script src="js/zseb.js"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
-    <script>navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' });</script>
+    <script>
+        // Frissítés: megnyitáskor és amikor az app újra előtérbe kerül, megnézzük, van-e új verzió.
+        // Ha az új verzió átvette az irányítást, újratöltünk – de nem gépelés vagy hangfelvétel közben.
+        (function () {
+            if (!('serviceWorker' in navigator)) return;
+            const hadController = !!navigator.serviceWorker.controller;
+            let pending = false, reloading = false;
+            const busy = function () {
+                const a = document.activeElement;
+                return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) ||
+                    !!(window.zseb && window.zseb.speech && window.zseb.speech._session);
+            };
+            const reload = function () {
+                if (reloading) return;
+                if (busy()) { pending = true; return; }
+                reloading = true;
+                location.reload();
+            };
+            navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState !== 'visible') return;
+                    if (pending) { reload(); return; }
+                    reg.update().catch(function () { });
+                });
+            });
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+                if (hadController) reload();     // első telepítésnél nem kell újratölteni
+            });
+        })();
+    </script>
 </body>
 
 </html>
