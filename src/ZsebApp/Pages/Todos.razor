@@ -43,7 +43,7 @@
     }
     else if (Data.Todos.Count == 0)
     {
-        <EmptyState IconName="list" Title="Nincs teendő" Text="Írd be fent az első feladatot." />
+        <EmptyState IconName="list" Title="Nincs teendő" Text="Írd be fent az első feladatot, vagy koppints duplán a képernyőre, és mondd ki." />
     }
     else
     {
@@ -56,7 +56,7 @@
                             aria-label="@(t.Done ? "Visszaállítás nyitottra" : "Késznek jelöl")">
                         <Icon Name="check" Size="16" />
                     </button>
-                    <div class="row-main" @onclick="() => Toggle(t)">
+                    <div class="row-main">
                         <div>@t.Title</div>
                         <div class="row-sub"><span>@Fmt.FullDate(t.CreatedAt)</span></div>
                     </div>
@@ -66,6 +66,7 @@
                 </li>
             }
         </ul>
+        <p class="hint">Tipp: dupla koppintás a képernyőn = hangos rögzítés, a végén mondd: „vége”.</p>
     }
 </div>
 
@@ -101,6 +102,8 @@
         if (!firstRender) return;
         selfRef = DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("zseb.speech.attach", micButton, selfRef, SpeechText.Language, SpeechText.StopWord);
+        // Dupla koppintás bárhol a képernyőn ugyanazt csinálja, mint a mikrofon gomb.
+        await JS.InvokeVoidAsync("zseb.speech.attachDoubleTap", selfRef, SpeechText.Language, SpeechText.StopWord);
     }
 
     [JSInvokable]
@@ -162,6 +165,7 @@
         Data.TodosChanged -= OnTodosChanged;
         try
         {
+            await JS.InvokeVoidAsync("zseb.speech.detachDoubleTap");
             await JS.InvokeVoidAsync("zseb.speech.detach", micButton);
         }
         catch (JSDisconnectedException)

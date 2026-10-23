@@ -47,66 +47,110 @@ window.zseb = {
             return m ? { text: m[1], hit: true } : { text: text, hit: false };
         },
 
-        attach: function (button, dotnet, lang, stopWord) {
+        // Felvétel indítása / leállítása (érintésből kell hívni – a Safari csak így engedi a mikrofont).
+        toggle: function (dotnet, lang, stopWord) {
             const s = window.zseb.speech;
-            const handler = function () {
-                // Második koppintás: leállítás, az eddigi szöveg megmarad.
-                if (s._rec) {
-                    try { s._rec.stop(); } catch (e) { }
-                    return;
-                }
+            // Második koppintás: leállítás, az eddigi szöveg megmarad.
+            if (s._rec) {
+                try { s._rec.stop(); } catch (e) { }
+                return;
+            }
 
-                const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-                if (!Rec) {
-                    dotnet.invokeMethodAsync('OnSpeechError', 'unsupported');
-                    return;
-                }
+            const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!Rec) {
+                dotnet.invokeMethodAsync('OnSpeechError', 'unsupported');
+                return;
+            }
 
-                // Minden felvételhez új példány – iOS-en az újrahasznált példány beakadhat.
-                const rec = new Rec();
-                rec.lang = lang;
-                rec.interimResults = true;
-                // Záró szónál folyamatos módban figyelünk, hogy a szünet ne vágja el a mondatot.
-                rec.continuous = !!stopWord;
-                rec.maxAlternatives = 1;
+            // Minden felvételhez új példány – iOS-en az újrahasznált példány beakadhat.
+            const rec = new Rec();
+            rec.lang = lang;
+            rec.interimResults = true;
+            // Záró szónál folyamatos módban figyelünk, hogy a szünet ne vágja el a mondatot.
+            rec.continuous = !!stopWord;
+            rec.maxAlternatives = 1;
 
-                let text = '';
-                let committed = false;
-                // Biztonsági időkorlát, ha a Safari "beragad".
-                const watchdog = setTimeout(function () { try { rec.abort(); } catch (e) { } }, stopWord ? 60000 : 15000);
+            let text = '';
+            let committed = false;
+            // Biztonsági időkorlát, ha a Safari "beragad".
+            const watchdog = setTimeout(function () { try { rec.abort(); } catch (e) { } }, stopWord ? 60000 : 15000);
 
-                rec.onstart = function () { dotnet.invokeMethodAsync('OnSpeechStart'); };
-                rec.onresult = function (e) {
-                    if (committed) return;
-                    // Mindig a teljes eredménylistából építjük újra a szöveget (iOS-en így nincs duplázás).
-                    const raw = Array.from(e.results).map(function (r) { return r[0].transcript; }).join(' ');
-                    const r = s.stripStopWord(raw, stopWord);
-                    text = r.text;
-                    dotnet.invokeMethodAsync('OnSpeechResult', text);
-                    if (r.hit) {
-                        committed = true;
-                        try { rec.stop(); } catch (err) { }
-                    }
-                };
-                rec.onerror = function (e) { dotnet.invokeMethodAsync('OnSpeechError', e.error || 'unknown'); };
-                rec.onend = function () {
-                    clearTimeout(watchdog);
-                    s._rec = null;
-                    dotnet.invokeMethodAsync('OnSpeechEnd', text, committed);
-                };
-
-                s._rec = rec;
-                try {
-                    rec.start();
-                } catch (err) {
-                    clearTimeout(watchdog);
-                    s._rec = null;
-                    dotnet.invokeMethodAsync('OnSpeechError', 'start-failed');
+            rec.onstart = function () { dotnet.invokeMethodAsync('OnSpeechStart'); };
+            rec.onresult = function (e) {
+                if (committed) return;
+                // Mindig a teljes eredménylistából építjük újra a szöveget (iOS-en így nincs duplázás).
+                const raw = Array.from(e.results).map(function (r) { return r[0].transcript; }).join(' ');
+                const r = s.stripStopWord(raw, stopWord);
+                text = r.text;
+                dotnet.invokeMethodAsync('OnSpeechResult', text);
+                if (r.hit) {
+                    committed = true;
+                    try { rec.stop(); } catch (err) { }
                 }
             };
+            rec.onerror = function (e) { dotnet.invokeMethodAsync('OnSpeechError', e.error || 'unknown'); };
+            rec.onend = function () {
+                clearTimeout(watchdog);
+                s._rec = null;
+                dotnet.invokeMethodAsync('OnSpeechEnd', text, committed);
+            };
+
+            s._rec = rec;
+            try {
+                rec.start();
+            } catch (err) {
+                clearTimeout(watchdog);
+                s._rec = null;
+                dotnet.invokeMethodAsync('OnSpeechError', 'start-failed');
+            }
+        },
+
+        attach: function (button, dotnet, lang, stopWord) {
+            const handler = function () { window.zseb.speech.toggle(dotnet, lang, stopWord); };
 
             button.addEventListener('click', handler);
             button._zsebSpeechHandler = handler;
+        },
+
+        // Dupla koppintás a képernyőn (a Teendők oldalon) = mikrofon gomb.
+        // Gombra, szövegmezőre, pipára és a hangpanelre koppintást nem számolunk.
+        attachDoubleTap: function (dotnet, lang, stopWord) {
+            const s = window.zseb.speech;
+            s.detachDoubleTap();
+            let lastTime = 0, lastX = 0, lastY = 0;
+            const ignore = 'input, textarea, select, button, a, label, .chips, .voice-sheet, .tabbar, .voice-fab';
+            const onTouchEnd = function (e) {
+                if (e.changedTouches.length !== 1 || e.touches.length > 0) return;
+                const t = e.target;
+                if (t.closest && t.closest(ignore)) { lastTime = 0; return; }
+                const p = e.changedTouches[0];
+                const now = Date.now();
+                const near = Math.abs(p.clientX - lastX) < 40 && Math.abs(p.clientY - lastY) < 40;
+                if (now - lastTime < 350 && near) {
+                    lastTime = 0;
+                    e.preventDefault();                       // ne legyen belőle kattintás / nagyítás
+                    s.toggle(dotnet, lang, stopWord);         // érintésből indul -> a Safari engedi
+                    return;
+                }
+                lastTime = now; lastX = p.clientX; lastY = p.clientY;
+            };
+            const onDblClick = function (e) {                 // asztali böngészőben egérrel
+                const t = e.target;
+                if (t.closest && t.closest(ignore)) return;
+                s.toggle(dotnet, lang, stopWord);
+            };
+            document.addEventListener('touchend', onTouchEnd, { passive: false });
+            document.addEventListener('dblclick', onDblClick);
+            s._dbl = { onTouchEnd: onTouchEnd, onDblClick: onDblClick };
+        },
+
+        detachDoubleTap: function () {
+            const s = window.zseb.speech;
+            if (s._dbl) {
+                document.removeEventListener('touchend', s._dbl.onTouchEnd);
+                document.removeEventListener('dblclick', s._dbl.onDblClick);
+                s._dbl = null;
+            }
         },
 
         // Felvétel megszakítása visszahívások nélkül (Mégse gomb, oldal elhagyása).
