@@ -121,7 +121,9 @@
         var months = Views;
         var allRows = months.SelectMany(m => m.Rows).ToList();
         var unpaidRows = allRows.Where(r => !r.Paid).ToList();
-        var paidRows = allRows.Where(r => r.Paid).ToList();
+        // A túlfizetés nem számít bele a Fizetve összegbe – külön jelenik meg.
+        var paidRows = allRows.Where(r => r.Paid && !r.Overpaid).ToList();
+        var overpaidRows = allRows.Where(r => r.Overpaid).ToList();
 
         <section class="bill-summary">
             <div class="card bill-total unpaid">
@@ -132,7 +134,7 @@
             <div class="card bill-total paid">
                 <span class="bill-total-label">Fizetve</span>
                 <span class="bill-total-value">@Fmt.Ft(paidRows.Sum(r => (long)r.Amount))</span>
-                <span class="bill-total-sub">@paidRows.Count db</span>
+                <span class="bill-total-sub">@paidRows.Count db@(overpaidRows.Count > 0 ? $" · túlfizetés: {Fmt.Ft(overpaidRows.Sum(r => (long)r.Amount))}" : "")</span>
             </div>
         </section>
 
@@ -158,7 +160,7 @@
                             <span class="group-icon"><Icon Name="@GroupIcon(kind)" Size="20" /></span>
                             <span class="group-title">
                                 <strong>@g.Name</strong>
-                                <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
+                                <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")@(g.OverpaidSum > 0 ? $" · túlfizetés: {Fmt.Ft(g.OverpaidSum)}" : "")</small>
                             </span>
                             <span class="group-paid">
                                 <b>@Fmt.Ft(g.PaidSum)</b>

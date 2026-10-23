@@ -22,7 +22,9 @@ public sealed record BillRow(Bill? Bill, BillTemplate? Template, string Group, s
 public sealed record BillGroupView(string Name, List<BillRow> Rows)
 {
     public long Unpaid => Rows.Where(r => !r.Paid).Sum(r => (long)r.Amount);
-    public long PaidSum => Rows.Where(r => r.Paid).Sum(r => (long)r.Amount);
+    /// <summary>Befizetett összeg – a túlfizetéses tételek nélkül (azok külön, <see cref="OverpaidSum"/>).</summary>
+    public long PaidSum => Rows.Where(r => r.Paid && !r.Overpaid).Sum(r => (long)r.Amount);
+    public long OverpaidSum => Rows.Where(r => r.Overpaid).Sum(r => (long)r.Amount);
     public int PaidCount => Rows.Count(r => r.Paid);
 }
 
