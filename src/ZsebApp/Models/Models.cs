@@ -45,6 +45,9 @@ public sealed class Bill
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>Túlfizetés: fizetve, de a kelleténél többet (zöld, mint a Fizetve). Csak Paid = true mellett értelmes.</summary>
+    public bool Overpaid { get; set; }
+
     /// <summary>Fizetési határidő (nem kötelező). JSON-ban "date" néven – a korábbi verzió ezt használta.</summary>
     [System.Text.Json.Serialization.JsonPropertyName("date")]
     public DateOnly? DueDate { get; set; }

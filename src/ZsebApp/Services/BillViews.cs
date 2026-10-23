@@ -11,6 +11,12 @@ public sealed record BillRow(Bill? Bill, BillTemplate? Template, string Group, s
     public bool IsVirtual => Bill is null;
     public bool IsOverdue => !Paid && DueDate is { } d && d < Period.Today;
     public string Key => Bill?.Id.ToString() ?? "t-" + Template!.Id;
+
+    /// <summary>Túlfizetés (csak fizetett számlánál).</summary>
+    public bool Overpaid { get; init; }
+
+    /// <summary>Az állapot felirata: Rendezetlen / Fizetve / Túlfizetés.</summary>
+    public string StatusText => !Paid ? "Rendezetlen" : Overpaid ? "Túlfizetés" : "Fizetve";
 }
 
 public sealed record BillGroupView(string Name, List<BillRow> Rows)
@@ -83,7 +89,7 @@ public static class BillViews
         return new DateOnly(first.Year, first.Month, Math.Min(due.Day, lastDay));
     }
 
-    private static BillRow FromBill(Bill b) => new(b, null, GroupOf(b), b.Name, b.Amount, b.Paid, b.DueDate);
+    private static BillRow FromBill(Bill b) => new(b, null, GroupOf(b), b.Name, b.Amount, b.Paid, b.DueDate) { Overpaid = b.Paid && b.Overpaid };
 
     /// <summary>Egy hónap nézete: a fix tételek (rögzítve vagy még kitöltendőként) és az egyéb számlák, csoportosítva.</summary>
     public static BillMonthView Month(IEnumerable<Bill> bills, IReadOnlyList<BillTemplate> templates, string monthKey, string? groupFilter = null)

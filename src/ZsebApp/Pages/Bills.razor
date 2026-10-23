@@ -69,12 +69,16 @@
                     <span>Állapot</span>
                     <div class="segmented" role="radiogroup" aria-label="Állapot">
                         <button type="button" role="radio" aria-checked="@(!fPaid ? "true" : "false")"
-                                class="seg unpaid @(!fPaid ? "selected" : null)" @onclick="() => fPaid = false">
+                                class="seg unpaid @(!fPaid ? "selected" : null)" @onclick="() => { fPaid = false; fOverpaid = false; }">
                             Rendezetlen
                         </button>
-                        <button type="button" role="radio" aria-checked="@(fPaid ? "true" : "false")"
-                                class="seg paid @(fPaid ? "selected" : null)" @onclick="() => fPaid = true">
+                        <button type="button" role="radio" aria-checked="@(fPaid && !fOverpaid ? "true" : "false")"
+                                class="seg paid @(fPaid && !fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = false; }">
                             Fizetve
+                        </button>
+                        <button type="button" role="radio" aria-checked="@(fPaid && fOverpaid ? "true" : "false")"
+                                class="seg paid @(fPaid && fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = true; }">
+                            Túlfizetés
                         </button>
                     </div>
                 </div>
@@ -144,21 +148,30 @@
             {
                 var kind = GroupKind(g.Name);
                 var open = Same(managing, g.Name);
+                var collapsed = IsCollapsed(g.Name);
                 {
-                    @* Minden csoport kiemelt fejlécet kap; koppintásra a csoport fix tételei szerkeszthetők *@
-                    <button type="button" class="group-header @kind @(open ? "open" : null)" @onclick="() => ToggleManage(g.Name)"
-                            aria-expanded="@(open ? "true" : "false")" aria-label="@($"{g.Name} – fix tételek szerkesztése")">
-                        <span class="group-icon"><Icon Name="@GroupIcon(kind)" Size="20" /></span>
-                        <span class="group-title">
-                            <strong>@g.Name</strong>
-                            <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
-                        </span>
-                        <span class="group-paid">
-                            <b>@Fmt.Ft(g.PaidSum)</b>
-                            <small>befizetve</small>
-                        </span>
-                        <span class="group-edit"><Icon Name="@(open ? "chevron-down" : "edit")" Size="18" Class="@(open ? "rotate-180" : null)" /></span>
-                    </button>
+                    @* Minden csoport kiemelt fejlécet kap: a fejlécre koppintva a fix tételek szerkeszthetők,
+                       a jobb oldali nyíllal a csoport összecsukható (a Ház és a Lakás alapból össze van csukva). *@
+                    <div class="group-header @kind @(open ? "open" : null) @(collapsed ? "collapsed" : null)">
+                        <button type="button" class="group-main" @onclick="() => ToggleManage(g.Name)"
+                                aria-expanded="@(open ? "true" : "false")" aria-label="@($"{g.Name} – fix tételek szerkesztése")">
+                            <span class="group-icon"><Icon Name="@GroupIcon(kind)" Size="20" /></span>
+                            <span class="group-title">
+                                <strong>@g.Name</strong>
+                                <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
+                            </span>
+                            <span class="group-paid">
+                                <b>@Fmt.Ft(g.PaidSum)</b>
+                                <small>befizetve</small>
+                            </span>
+                            <span class="group-edit @(open ? "active" : null)"><Icon Name="edit" Size="16" /></span>
+                        </button>
+                        <button type="button" class="group-collapse" @onclick="() => ToggleCollapse(g.Name)"
+                                aria-expanded="@(collapsed ? "false" : "true")"
+                                aria-label="@($"{g.Name} – {(collapsed ? "kinyitás" : "összecsukás")}")">
+                            <Icon Name="chevron-down" Size="20" Class="@(collapsed ? null : "rotate-180")" />
+                        </button>
+                    </div>
 
                     @if (open)
                     {
@@ -249,41 +262,44 @@
                         </section>
                     }
                 }
-                <ul class="card list">
-                    @foreach (var r in g.Rows)
-                    {
-                        <li class="row bill-row @(r.IsVirtual ? "virtual" : null)" @key="r.Key">
-                            <div class="row-main tappable-area" @onclick="() => OpenRow(r, m.MonthKey)">
-                                <div class="bill-name">@r.Name</div>
-                                <div class="row-sub">
-                                    @if (r.IsOverdue)
-                                    {
-                                        <span class="overdue">lejárt: @Fmt.TinyDate(r.DueDate!.Value)</span>
-                                    }
-                                    else if (r.DueDate is { } due)
-                                    {
-                                        <span>határidő: @Fmt.TinyDate(due)</span>
-                                    }
-                                    @if (r.IsVirtual)
-                                    {
-                                        <span class="muted">@(r.DueDate is null ? "még nincs rögzítve" : "· még nincs rögzítve")</span>
-                                    }
-                                    else if (r.Paid && r.Bill!.PaidAt is { } paidAt)
-                                    {
-                                        <span>fizetve: @Fmt.TinyDate(DateOnly.FromDateTime(paidAt))</span>
-                                    }
+                @if (!collapsed)
+                {
+                    <ul class="card list">
+                        @foreach (var r in g.Rows)
+                        {
+                            <li class="row bill-row @(r.IsVirtual ? "virtual" : null)" @key="r.Key">
+                                <div class="row-main tappable-area" @onclick="() => OpenRow(r, m.MonthKey)">
+                                    <div class="bill-name">@r.Name</div>
+                                    <div class="row-sub">
+                                        @if (r.IsOverdue)
+                                        {
+                                            <span class="overdue">lejárt: @Fmt.TinyDate(r.DueDate!.Value)</span>
+                                        }
+                                        else if (r.DueDate is { } due)
+                                        {
+                                            <span>határidő: @Fmt.TinyDate(due)</span>
+                                        }
+                                        @if (r.IsVirtual)
+                                        {
+                                            <span class="muted">@(r.DueDate is null ? "még nincs rögzítve" : "· még nincs rögzítve")</span>
+                                        }
+                                        else if (r.Paid && r.Bill!.PaidAt is { } paidAt)
+                                        {
+                                            <span>fizetve: @Fmt.TinyDate(DateOnly.FromDateTime(paidAt))</span>
+                                        }
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="bill-right">
-                                <span class="amount">@(r.Amount > 0 ? Fmt.Ft(r.Amount) : "– Ft")</span>
-                                <button class="status-pill @(r.Paid ? "paid" : "unpaid")" @onclick="() => TogglePaid(r, m.MonthKey)"
-                                        aria-label="@(r.Paid ? "Fizetve – koppints a Rendezetlenre váltáshoz" : "Rendezetlen – koppints a Fizetvére váltáshoz")">
-                                    @(r.Paid ? "Fizetve" : "Rendezetlen")
-                                </button>
-                            </div>
-                        </li>
-                    }
-                </ul>
+                                <div class="bill-right">
+                                    <span class="amount">@(r.Amount > 0 ? Fmt.Ft(r.Amount) : "– Ft")</span>
+                                    <button class="status-pill @(r.Paid ? "paid" : "unpaid") @(r.Overpaid ? "overpaid" : null)" @onclick="() => TogglePaid(r, m.MonthKey)"
+                                            aria-label="@($"{r.StatusText} – koppints a következő állapotra (Rendezetlen → Fizetve → Túlfizetés)")">
+                                        @r.StatusText
+                                    </button>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
             }
         }
 
@@ -380,6 +396,7 @@
     private DateOnly? fDue;
     private string fMonth = BillMonth.Key(Period.Today);
     private bool fPaid;
+    private bool fOverpaid;
     private bool fRecurring;
     private string? fError;
 
@@ -467,6 +484,7 @@
         fDue = null;
         fMonth = ViewMonthKey;
         fPaid = false;
+        fOverpaid = false;
         fRecurring = false;
         fError = null;
     }
@@ -500,6 +518,7 @@
             fDue = b.DueDate;
             fMonth = b.EffectiveMonth;
             fPaid = b.Paid;
+            fOverpaid = b.Paid && b.Overpaid;
         }
         else if (r.Template is { } t)
         {
@@ -546,6 +565,7 @@
         bill.DueDate = fDue;
         bill.Month = fMonth;
         bill.Paid = fPaid;
+        bill.Overpaid = fPaid && fOverpaid;
         bill.PaidAt = fPaid ? (wasPaid ? bill.PaidAt ?? DateTime.Now : DateTime.Now) : null;
 
         if (editing is null)
@@ -577,8 +597,24 @@
     {
         if (r.Bill is { } b)
         {
-            b.Paid = !b.Paid;
-            b.PaidAt = b.Paid ? DateTime.Now : null;
+            // Rendezetlen → Fizetve → Túlfizetés → Rendezetlen
+            if (!b.Paid)
+            {
+                b.Paid = true;
+                b.Overpaid = false;
+                b.PaidAt = DateTime.Now;
+            }
+            else if (!b.Overpaid)
+            {
+                b.Overpaid = true;
+                b.PaidAt ??= DateTime.Now;
+            }
+            else
+            {
+                b.Paid = false;
+                b.Overpaid = false;
+                b.PaidAt = null;
+            }
             await Data.SaveBillsAsync();
             return;
         }
@@ -655,6 +691,17 @@
     }
 
     // ---------- Kiemelt csoport szerkesztése ----------
+
+    // ---------- Csoportok összecsukása ----------
+
+    /// <summary>A felhasználó által kinyitott / összecsukott csoportok (az app futása alatt megmarad).</summary>
+    private static readonly Dictionary<string, bool> collapsedGroups = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Alapból a Ház és a Lakás csoport össze van csukva, a többi nyitva.</summary>
+    private static bool IsCollapsed(string groupName) =>
+        collapsedGroups.TryGetValue(groupName, out var c) ? c : GroupKind(groupName) is "house" or "flat";
+
+    private static void ToggleCollapse(string groupName) => collapsedGroups[groupName] = !IsCollapsed(groupName);
 
     private void ToggleManage(string groupName)
     {

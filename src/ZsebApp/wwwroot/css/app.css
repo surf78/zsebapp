@@ -782,8 +782,16 @@ a.action { text-decoration: none; }
 
 .group-header.house { --group: #ff7a3d; --group-bg: linear-gradient(135deg, #ffb238, #ff7a3d); }
 .group-header.flat { --group: #7b61ff; --group-bg: linear-gradient(135deg, #a18bff, #6a4cf0); }
-button.group-header { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-button.group-header:active { transform: scale(0.99); }
+.group-header { padding-right: 6px; }
+.group-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: none;
+    font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.group-main:active { opacity: 0.7; }
+.group-edit { opacity: 0.55; }
+.group-edit.active { opacity: 1; }
+.group-collapse { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px;
+    border: 0; border-radius: 12px; background: var(--fill); color: var(--group); cursor: pointer; }
+.group-collapse:active { transform: scale(0.92); }
+.status-pill.overpaid { letter-spacing: 0; }
 .group-title { flex: 1; }
 .group-edit { display: inline-flex; flex: none; color: var(--group); }
 .group-manage { margin-bottom: 8px; border-left: 5px solid var(--glass-border); }
