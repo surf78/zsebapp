@@ -1,0 +1,14 @@
+{
+  "name": "zsebapp-sync",
+  "private": true,
+  "description": "ZsebApp közös adattár (Firebase) – a böngészős csomag forrása. Build: npm install && npm run build",
+  "scripts": {
+    "build": "esbuild sync.src.js --bundle --minify --format=iife --target=es2020,safari15 --legal-comments=none --outfile=../src/ZsebApp/wwwroot/js/sync.bundle.js"
+  },
+  "dependencies": {
+    "firebase": "13.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

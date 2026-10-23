@@ -7,6 +7,8 @@ public sealed class TodoItem
     public bool Done { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? CompletedAt { get; set; }
+    /// <summary>Ki vette fel (közös használatnál a bejelentkezett felhasználó neve).</summary>
+    public string? CreatedBy { get; set; }
 }
 
 public sealed class Note

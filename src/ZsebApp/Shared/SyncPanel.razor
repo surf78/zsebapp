@@ -1,0 +1,222 @@
+@* Közös használat: bejelentkezés, közös tár létrehozása, tagok kezelése, szinkron állapota. *@
+@implements IDisposable
+@inject SyncService Sync
+
+<p class="section-label">Közös használat</p>
+<section class="card form sync-panel">
+    @switch (S.Phase)
+    {
+        case "off":
+            <p class="form-note">A közös tár (szinkron) még nincs beállítva ebben a verzióban. Addig az adatok csak ezen a telefonon vannak.</p>
+            break;
+
+        case "loading":
+            <p class="form-note">Kapcsolódás…</p>
+            break;
+
+        case "signedOut":
+            <p class="form-note">
+                Jelentkezz be, és a párod telefonján ugyanazok az adatok látszanak: amit az egyikőtök módosít,
+                a másiknál pár másodpercen belül megjelenik. Internet nélkül is működik, utána szinkronizál.
+            </p>
+            @if (register)
+            {
+                <input class="input" placeholder="Neved (pl. István)" autocomplete="name" @bind="name" @bind:event="oninput" />
+            }
+            <input class="input" type="email" placeholder="E-mail cím" autocomplete="email" inputmode="email"
+                   autocapitalize="off" @bind="email" @bind:event="oninput" />
+            <input class="input" type="password" placeholder="@(register ? "Jelszó (min. 6 karakter)" : "Jelszó")"
+                   autocomplete="@(register ? "new-password" : "current-password")" @bind="password" @bind:event="oninput" />
+            <Feedback Error="@error" Info="@info" />
+            @if (register)
+            {
+                <button class="btn primary block" disabled="@busy" @onclick="Register">Regisztráció</button>
+                <button class="link-btn" @onclick="() => SwitchMode(false)">Már van fiókom – belépés</button>
+            }
+            else
+            {
+                <button class="btn primary block" disabled="@busy" @onclick="SignIn">Belépés</button>
+                <div class="sync-links">
+                    <button class="link-btn" @onclick="() => SwitchMode(true)">Új fiók (regisztráció)</button>
+                    <button class="link-btn" @onclick="ResetPassword">Elfelejtett jelszó</button>
+                </div>
+            }
+            break;
+
+        case "verify":
+            <p class="form-note">
+                Küldtünk egy megerősítő e-mailt ide: <strong>@S.Email</strong>. Kattints a benne lévő linkre
+                (ha nem találod, nézd meg a Spam / Levélszemét mappát), majd gyere vissza, és koppints a gombra.
+            </p>
+            <Feedback Error="@error" Info="@info" />
+            <button class="btn primary block" disabled="@busy" @onclick="CheckVerified">Megerősítettem</button>
+            <div class="sync-links">
+                <button class="link-btn" @onclick="Resend">E-mail újraküldése</button>
+                <button class="link-btn" @onclick="SignOut">Kilépés</button>
+            </div>
+            break;
+
+        case "noHousehold":
+            <p class="form-note">Bejelentkezve: <strong>@S.Name</strong> (@S.Email)</p>
+            <p class="form-note">
+                Még nem vagy tagja közös tárnak. Ha a párod már létrehozta, kérd meg, hogy a Beállításokban
+                adja hozzá ezt az e-mail címet: <strong>@S.Email</strong>, majd koppints a <em>Keresés újra</em> gombra.
+            </p>
+            <p class="form-note">
+                Ha te vagy az első: hozd létre a közös tárat – a telefonon lévő adataid feltöltődnek, utána add hozzá a párod e-mail címét.
+            </p>
+            <Feedback Error="@(error ?? SyncText.ErrorMessage(S.Error))" Info="@info" />
+            <button class="btn primary block" disabled="@busy" @onclick="CreateHousehold">Közös tár létrehozása</button>
+            <div class="sync-links">
+                <button class="link-btn" disabled="@busy" @onclick="FindAgain">Keresés újra</button>
+                <button class="link-btn" @onclick="SignOut">Kilépés</button>
+            </div>
+            break;
+
+        case "connected":
+            <div class="sync-status">
+                <span class="sync-dot @StatusClass"></span>
+                <span>@StatusText</span>
+            </div>
+            <p class="form-note">Bejelentkezve: <strong>@S.Name</strong> (@S.Email)</p>
+
+            <div class="sync-members">
+                <span class="field-label">Tagok</span>
+                @foreach (var m in S.Members)
+                {
+                    <div class="stat-row">
+                        <span>@m@(m == S.Email ? " (te)" : "")</span>
+                        @if (m != S.Email && S.IsOwner)
+                        {
+                            <button class="link-btn danger" @onclick="() => RemoveMember(m)">Eltávolítás</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="add-member">
+                <input class="input" type="email" placeholder="Párod e-mail címe" inputmode="email" autocapitalize="off"
+                       @bind="newMember" @bind:event="oninput" />
+                <button class="btn" disabled="@(busy || string.IsNullOrWhiteSpace(newMember))" @onclick="AddMember">Hozzáadás</button>
+            </div>
+            <Feedback Error="@(error ?? SyncText.ErrorMessage(S.Error))" Info="@info" />
+            <button class="link-btn" @onclick="SignOut">Kilépés (az adatok ezen a telefonon megmaradnak)</button>
+            break;
+
+        default:
+            <Feedback Error="@(error ?? SyncText.ErrorMessage(S.Error) ?? "Nem sikerült kapcsolódni.")" Info="@info" />
+            <div class="sync-links">
+                <button class="link-btn" disabled="@busy" @onclick="FindAgain">Újrapróbálás</button>
+                <button class="link-btn" @onclick="SignOut">Kilépés</button>
+            </div>
+            break;
+    }
+</section>
+
+@code {
+    private SyncState S => Sync.State;
+
+    private bool register;
+    private bool busy;
+    private string name = "";
+    private string email = "";
+    private string password = "";
+    private string newMember = "";
+    private string? error;
+    private string? info;
+
+    private string StatusClass =>
+        !S.Online ? "offline" : S.Pending ? "pending" : S.Synced ? "ok" : "pending";
+
+    private string StatusText =>
+        !S.Online ? (S.Pending ? "Offline – a módosításaid net esetén feltöltődnek" : "Offline – net esetén szinkronizál")
+        : S.Pending ? "Feltöltés folyamatban…"
+        : S.Synced ? "Szinkronizálva"
+        : "Kapcsolódás…";
+
+    protected override void OnInitialized() => Sync.StateChanged += OnState;
+
+    private void OnState() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Sync.StateChanged -= OnState;
+
+    private void SwitchMode(bool reg)
+    {
+        register = reg;
+        error = info = null;
+    }
+
+    private async Task Run(Func<Task<string?>> action, string? okInfo = null)
+    {
+        busy = true;
+        error = info = null;
+        try
+        {
+            var code = await action();
+            error = SyncText.ErrorMessage(code);
+            if (error is null) info = okInfo;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private Task SignIn() => Run(async () =>
+    {
+        var r = await Sync.SignInAsync(email, password);
+        if (r is null) password = "";
+        return r;
+    });
+
+    private Task Register()
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "Add meg a neved – ez látszik majd a teendőknél.";
+            return Task.CompletedTask;
+        }
+        return Run(async () =>
+        {
+            var r = await Sync.RegisterAsync(name, email, password);
+            if (r is null) password = "";
+            return r;
+        });
+    }
+
+    private Task ResetPassword()
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            error = "Írd be fent az e-mail címed, majd koppints újra az Elfelejtett jelszóra.";
+            return Task.CompletedTask;
+        }
+        return Run(() => Sync.ResetPasswordAsync(email), "Elküldtük a jelszó-visszaállító e-mailt.");
+    }
+
+    private Task CheckVerified() => Run(Sync.CheckVerifiedAsync);
+    private Task Resend() => Run(Sync.ResendVerificationAsync, "Újraküldtük a megerősítő e-mailt.");
+    private Task CreateHousehold() => Run(Sync.CreateHouseholdAsync, "A közös tár elkészült, az adataid feltöltődtek.");
+
+    private Task FindAgain() => Run(async () =>
+    {
+        await Sync.FindHouseholdAsync();
+        return null;
+    });
+
+    private Task AddMember() => Run(async () =>
+    {
+        var mail = newMember.Trim().ToLowerInvariant();
+        if (!mail.Contains('@')) return "invalid";
+        var r = await Sync.AddMemberAsync(mail);
+        if (r is null) newMember = "";
+        return r;
+    }, "Hozzáadva. A párod lépjen be ezzel az e-mail címmel (vagy regisztráljon vele).");
+
+    private Task RemoveMember(string mail) => Run(() => Sync.RemoveMemberAsync(mail));
+
+    private async Task SignOut()
+    {
+        error = info = null;
+        await Sync.SignOutAsync();
+    }
+}

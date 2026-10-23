@@ -64,7 +64,13 @@
                     </button>
                     <div class="row-main">
                         <div>@t.Title</div>
-                        <div class="row-sub"><span>@Fmt.FullDate(t.CreatedAt)</span></div>
+                        <div class="row-sub">
+                            <span>@Fmt.FullDate(t.CreatedAt)</span>
+                            @if (!string.IsNullOrEmpty(t.CreatedBy))
+                            {
+                                <span class="by">@t.CreatedBy</span>
+                            }
+                        </div>
                     </div>
                     <button class="icon-btn ghost" @onclick="() => Delete(t)" aria-label="Törlés">
                         <Icon Name="trash" Size="20" />

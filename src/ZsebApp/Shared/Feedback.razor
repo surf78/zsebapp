@@ -1,0 +1,14 @@
+@* Hiba- vagy tájékoztató üzenet egy űrlap alatt. *@
+@if (!string.IsNullOrEmpty(Error))
+{
+    <p class="error">@Error</p>
+}
+else if (!string.IsNullOrEmpty(Info))
+{
+    <p class="form-note ok">@Info</p>
+}
+
+@code {
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Info { get; set; }
+}

@@ -9,5 +9,6 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddScoped<LocalStore>();
 builder.Services.AddScoped<AppData>();
+builder.Services.AddScoped<SyncService>();
 
 await builder.Build().RunAsync();

@@ -26,6 +26,9 @@ public sealed class LocalStore(IJSRuntime js)
     public ValueTask SetAsync<T>(string key, T value, JsonTypeInfo<T> typeInfo) =>
         js.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(value, typeInfo));
 
+    public Task SetRawAsync(string key, string json) =>
+        js.InvokeVoidAsync("localStorage.setItem", key, json).AsTask();
+
     public ValueTask RemoveAsync(string key) =>
         js.InvokeVoidAsync("localStorage.removeItem", key);
 }

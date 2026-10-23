@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject AppData Data
+@inject SyncService Sync
 
 <div class="app" data-tab-index="@TabIndex(currentPath ?? "")" data-tab-count="@Tabs.Length">
     @* A @key miatt minden fülváltásnál újraépül, így lejátszódik a csúszó animáció. *@
@@ -117,6 +118,8 @@
         {
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("zseb.swipe.attach", selfRef);
+            // Közös tár: ha korábban bejelentkeztél, itt kapcsolódik újra (a háttérben).
+            _ = Sync.StartAsync();
         }
 
         // A lebegő gomb a Teendők oldalon eltűnik, máshol újra megjelenik – ilyenkor újra kell csatolni.

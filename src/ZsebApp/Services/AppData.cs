@@ -1,11 +1,17 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+using Microsoft.JSInterop;
 using ZsebApp.Models;
 
 namespace ZsebApp.Services;
 
-/// <summary>Az app összes adata. Egyszer tölt be, minden módosítás után ment.</summary>
-public sealed class AppData(LocalStore store)
+/// <summary>
+/// Az app összes adata. Egyszer tölt be, minden módosítás után ment a telefonra (localStorage),
+/// és ha be vagy jelentkezve a közös tárba, a felhőbe is (zseb.sync.push – a JS csak a változásokat írja ki).
+/// </summary>
+public sealed class AppData(LocalStore store, IJSRuntime js)
 {
     private const string TodosKey = "zseb.todos";
     private const string NotesKey = "zseb.notes";
@@ -27,6 +33,12 @@ public sealed class AppData(LocalStore store)
 
     /// <summary>Jelez, ha a teendők máshonnan (pl. a lebegő mikrofon gombról) változtak.</summary>
     public event Action? TodosChanged;
+
+    /// <summary>Jelez, ha az adatok a felhőből (a másik telefonról) frissültek – az oldalak ilyenkor újrarajzolnak.</summary>
+    public event Action? Changed;
+
+    /// <summary>A bejelentkezett felhasználó neve (a közös tárban); ő lesz az új teendők rögzítője.</summary>
+    public string? UserName { get; set; }
 
     public Task EnsureLoadedAsync() => _loading ??= LoadAsync();
 
@@ -52,20 +64,111 @@ public sealed class AppData(LocalStore store)
         }
     }
 
-    public Task SaveTodosAsync() => store.SetAsync(TodosKey, Todos, AppJsonContext.Default.ListTodoItem).AsTask();
-    public Task SaveNotesAsync() => store.SetAsync(NotesKey, Notes, AppJsonContext.Default.ListNote).AsTask();
-    public Task SaveExpensesAsync() => store.SetAsync(ExpensesKey, Expenses, AppJsonContext.Default.ListExpense).AsTask();
-    public Task SaveBillsAsync() => store.SetAsync(BillsKey, Bills, AppJsonContext.Default.ListBill).AsTask();
-    public Task SaveBillTemplatesAsync() => store.SetAsync(BillTemplatesKey, BillTemplates, AppJsonContext.Default.ListBillTemplate).AsTask();
-    public Task SaveMetersAsync() => store.SetAsync(MetersKey, Meters, AppJsonContext.Default.ListMeterReading).AsTask();
-    public Task SaveSettingsAsync() => store.SetAsync(SettingsKey, Settings, AppJsonContext.Default.AppSettings).AsTask();
+    public Task SaveTodosAsync() => SaveAsync(TodosKey, Todos, AppJsonContext.Default.ListTodoItem);
+    public Task SaveNotesAsync() => SaveAsync(NotesKey, Notes, AppJsonContext.Default.ListNote);
+    public Task SaveExpensesAsync() => SaveAsync(ExpensesKey, Expenses, AppJsonContext.Default.ListExpense);
+    public Task SaveBillsAsync() => SaveAsync(BillsKey, Bills, AppJsonContext.Default.ListBill);
+    public Task SaveBillTemplatesAsync() => SaveAsync(BillTemplatesKey, BillTemplates, AppJsonContext.Default.ListBillTemplate);
+    public Task SaveMetersAsync() => SaveAsync(MetersKey, Meters, AppJsonContext.Default.ListMeterReading);
+    public Task SaveSettingsAsync() => SaveAsync(SettingsKey, Settings, AppJsonContext.Default.AppSettings);
+
+    /// <summary>Mentés a telefonra, és (ha van kapcsolat) a változások kiírása a közös tárba.</summary>
+    private async Task SaveAsync<T>(string key, T value, JsonTypeInfo<T> typeInfo)
+    {
+        var json = JsonSerializer.Serialize(value, typeInfo);
+        await store.SetRawAsync(key, json);
+        if (SyncActive)
+            await js.InvokeVoidAsync("zseb.sync.push", SyncName(key), json);
+    }
+
+    // ---------- Közös tár (szinkron) ----------
+
+    /// <summary>Igaz, ha be vagy jelentkezve és kapcsolódtál a közös tárhoz (a SyncService állítja).</summary>
+    public bool SyncActive { get; set; }
+
+    /// <summary>"zseb.todos" -> "todos" (a felhőben ezen a néven tároljuk).</summary>
+    private static string SyncName(string key) => key["zseb.".Length..];
+
+    /// <summary>A telefonon lévő összes adat (a közös tár létrehozásakor ezt töltjük fel).</summary>
+    public string ExportAllJson() => JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["todos"] = JsonSerializer.Serialize(Todos, AppJsonContext.Default.ListTodoItem),
+        ["notes"] = JsonSerializer.Serialize(Notes, AppJsonContext.Default.ListNote),
+        ["expenses"] = JsonSerializer.Serialize(Expenses, AppJsonContext.Default.ListExpense),
+        ["bills"] = JsonSerializer.Serialize(Bills, AppJsonContext.Default.ListBill),
+        ["billtemplates"] = JsonSerializer.Serialize(BillTemplates, AppJsonContext.Default.ListBillTemplate),
+        ["meters"] = JsonSerializer.Serialize(Meters, AppJsonContext.Default.ListMeterReading),
+        ["settings"] = JsonSerializer.Serialize(Settings, AppJsonContext.Default.AppSettings),
+    }, AppJsonContext.Default.DictionaryStringString);
+
+    /// <summary>
+    /// A felhőből érkezett lista átvétele. Az elemek sorrendje és a változatlan elemek (objektumai) megmaradnak,
+    /// így egy épp szerkesztett, de a másik telefonon nem módosított elem szerkesztése sem vész el.
+    /// Visszaadja az átvett lista JSON-ját (ehhez méri a JS a későbbi helyi változásokat).
+    /// </summary>
+    public string ApplyRemote(string syncName, string json)
+    {
+        string result = syncName switch
+        {
+            "todos" => Apply(TodosKey, json, Todos, x => Todos = x, t => t.Id, AppJsonContext.Default.ListTodoItem),
+            "notes" => Apply(NotesKey, json, Notes, x => Notes = x, t => t.Id, AppJsonContext.Default.ListNote),
+            "expenses" => Apply(ExpensesKey, json, Expenses, x => Expenses = x, t => t.Id, AppJsonContext.Default.ListExpense),
+            "bills" => Apply(BillsKey, json, Bills, x => Bills = x, t => t.Id, AppJsonContext.Default.ListBill),
+            "billtemplates" => Apply(BillTemplatesKey, json, BillTemplates, x => BillTemplates = x, t => t.Id, AppJsonContext.Default.ListBillTemplate),
+            "meters" => Apply(MetersKey, json, Meters, x => Meters = x, t => t.Id, AppJsonContext.Default.ListMeterReading),
+            "settings" => ApplySettings(json),
+            _ => json,
+        };
+        if (syncName == "todos") TodosChanged?.Invoke();
+        Changed?.Invoke();
+        return result;
+    }
+
+    private string Apply<T>(string key, string json, List<T> current, Action<List<T>> set, Func<T, Guid> id,
+        JsonTypeInfo<List<T>> typeInfo)
+    {
+        var incoming = JsonSerializer.Deserialize(json, typeInfo) ?? [];
+        var itemInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
+        string Ser(T x) => JsonSerializer.Serialize(x, itemInfo);
+
+        var old = new Dictionary<Guid, T>();
+        foreach (var o in current) old[id(o)] = o;
+        var byId = new Dictionary<Guid, T>();
+        foreach (var item in incoming)
+        {
+            var key2 = id(item);
+            // Változatlan elem: a régi objektum marad (a hivatkozások érvényesek maradnak).
+            byId[key2] = old.TryGetValue(key2, out var o) && Ser(o) == Ser(item) ? o : item;
+        }
+
+        // Sorrend: a meglévők az eddigi sorrendben, utánuk az újak.
+        var merged = new List<T>(byId.Count);
+        foreach (var o in current)
+            if (byId.Remove(id(o), out var keep)) merged.Add(keep);
+        foreach (var item in incoming)
+            if (byId.Remove(id(item), out var added)) merged.Add(added);
+
+        set(merged);
+        var result = JsonSerializer.Serialize(merged, typeInfo);
+        _ = store.SetRawAsync(key, result);
+        return result;
+    }
+
+    private string ApplySettings(string json)
+    {
+        var incoming = json == "null" ? null : JsonSerializer.Deserialize(json, AppJsonContext.Default.AppSettings);
+        if (incoming is not null) Settings = incoming;
+        var result = JsonSerializer.Serialize(Settings, AppJsonContext.Default.AppSettings);
+        _ = store.SetRawAsync(SettingsKey, result);
+        return result;
+    }
 
     /// <summary>Új teendő felvétele bárhonnan (pl. hangról), értesíti a Teendők oldalt.</summary>
     public async Task<TodoItem?> AddTodoAsync(string title)
     {
         title = title.Trim();
         if (title.Length == 0) return null;
-        var item = new TodoItem { Title = title };
+        var item = new TodoItem { Title = title, CreatedBy = SyncActive ? UserName : null };
         Todos.Add(item);
         await SaveTodosAsync();
         TodosChanged?.Invoke();
@@ -128,11 +231,12 @@ public sealed class AppData(LocalStore store)
         Bills = [];
         Meters = [];
         BillTemplates = BillDefaults.Create();
-        await store.RemoveAsync(TodosKey);
-        await store.RemoveAsync(NotesKey);
-        await store.RemoveAsync(ExpensesKey);
-        await store.RemoveAsync(BillsKey);
-        await store.RemoveAsync(MetersKey);
+        // Mentéssel (nem kulcs-törléssel), hogy közös használatnál a felhőből is törlődjön.
+        await SaveTodosAsync();
+        await SaveNotesAsync();
+        await SaveExpensesAsync();
+        await SaveBillsAsync();
+        await SaveMetersAsync();
         await SaveBillTemplatesAsync();
         TodosChanged?.Invoke();
     }

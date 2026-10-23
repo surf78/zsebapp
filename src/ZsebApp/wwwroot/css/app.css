@@ -1122,3 +1122,23 @@ a.action { text-decoration: none; }
 
 #blazor-error-ui .reload { margin-left: 8px; }
 #blazor-error-ui .dismiss { position: absolute; right: 16px; top: 12px; cursor: pointer; }
+
+/* ---------- Közös használat (szinkron) ---------- */
+.sync-panel .link-btn { align-self: flex-start; }
+.sync-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-btn.danger { color: var(--danger); }
+.link-btn:disabled, .btn:disabled { opacity: 0.55; }
+
+.sync-status { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.sync-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--muted); }
+.sync-dot.ok { background: var(--paid); box-shadow: 0 0 0 4px rgba(19, 132, 61, 0.18); }
+.sync-dot.pending { background: #e0a800; box-shadow: 0 0 0 4px rgba(224, 168, 0, 0.2); }
+.sync-dot.offline { background: var(--muted); }
+
+.sync-members { display: flex; flex-direction: column; gap: 4px; }
+.sync-members .stat-row { overflow-wrap: anywhere; gap: 10px; }
+.field-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.add-member { display: flex; gap: 8px; }
+.add-member .input { flex: 1; min-width: 0; }
+
+.row-sub .by::before { content: "·"; margin-right: 8px; }

@@ -1,7 +1,8 @@
 @page "/beallitasok"
 @using System.Text.Json
-@inject AppData Data
+@inherits DataPage
 @inject IJSRuntime JS
+@inject SyncService Sync
 
 <PageTitle>Beállítások – ZsebApp</PageTitle>
 
@@ -10,6 +11,8 @@
 </header>
 
 <div class="page">
+    <SyncPanel />
+
     <p class="section-label">Riport</p>
     <section class="card actions">
         <a class="action" href="beallitasok/riport">
@@ -37,7 +40,11 @@
             <span>Mérőóra-leolvasások</span><span class="muted">@Data.Meters.Count</span>
         </div>
     </section>
-    <p class="hint">Az adatok csak ezen a telefonon, az app saját tárhelyén vannak. Időnként készíts mentést.</p>
+    <p class="hint">
+        @(Sync.State.Connected
+            ? "Az adatok a közös tárban vannak (és ezen a telefonon is, így net nélkül is elérhetők)."
+            : "Az adatok csak ezen a telefonon, az app saját tárhelyén vannak. Időnként készíts mentést.")
+    </p>
 
     <p class="section-label">Mentés és visszaállítás</p>
     <section class="card actions">
@@ -123,7 +130,7 @@
 
             case ClearStep.Confirm:
                 <div class="confirm">
-                    <p><strong>Biztosan törölni szeretnéd az összes adatot?</strong> A teendők, jegyzetek, kiadások, számlák és mérőállások véglegesen törlődnek. Ez nem vonható vissza.</p>
+                    <p><strong>Biztosan törölni szeretnéd az összes adatot?</strong> A teendők, jegyzetek, kiadások, számlák és mérőállások véglegesen törlődnek@(Sync.State.Connected ? " – a közös tárból is, tehát a párod telefonján is" : ""). Ez nem vonható vissza.</p>
                     <div class="btn-row">
                         <button class="btn" @onclick="CancelClear">Mégse</button>
                         <button class="btn danger" @onclick="ClearAll">Igen, törlés</button>
@@ -172,6 +179,20 @@
     private string? message;
 
     protected override Task OnInitializedAsync() => Data.EnsureLoadedAsync();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Sync.StateChanged += OnSyncState;
+    }
+
+    private void OnSyncState() => InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Sync.StateChanged -= OnSyncState;
+        base.Dispose();
+    }
 
     private async Task Export()
     {

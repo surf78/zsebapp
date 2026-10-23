@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// ZsebApp – közös adattár. Csak a háztartás tagjai (megerősített e-mail címmel) érik el az adatokat.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isMember(hid) {
+      return signedIn() &&
+        myEmail() in get(/databases/$(database)/documents/households/$(hid)).data.memberEmails;
+    }
+
+    // Tagsági index: memberIndex/{email} = { hid }. Mindenki csak a saját sorát olvashatja,
+    // írni a háztartás tagjai tudják (amikor valakit hozzáadnak / eltávolítanak).
+    match /memberIndex/{mail} {
+      allow get: if signedIn() && mail == myEmail();
+      allow create, update: if isMember(request.resource.data.hid);
+      allow delete: if signedIn() && (mail == myEmail() || isMember(resource.data.hid));
+    }
+
+    match /households/{hid} {
+      allow read: if signedIn() && myEmail() in resource.data.memberEmails;
+      allow create: if signedIn()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.memberEmails == [myEmail()];
+      allow update: if signedIn()
+        && myEmail() in resource.data.memberEmails
+        && myEmail() in request.resource.data.memberEmails
+        && request.resource.data.owner == resource.data.owner;
+      allow delete: if false;
+
+      match /{coll}/{id} {
+        allow read, write: if isMember(hid)
+          && coll in ['todos', 'notes', 'expenses', 'bills', 'billtemplates', 'meters', 'settings'];
+      }
+    }
+  }
+}
