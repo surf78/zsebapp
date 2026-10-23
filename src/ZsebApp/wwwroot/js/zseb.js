@@ -36,6 +36,9 @@ window.zseb = {
         _session: null,
         _log: [],
 
+        // Ha ennyi ideig nem érkezik új felismert szöveg, az addigi szöveget mentjük ("vége" nélkül is).
+        silenceMs: 5000,
+
         // Diagnosztikai napló (Beállítások → Hangfelismerés napló), hogy iPhone-on is lássuk, mi történik.
         log: function (msg) {
             const l = window.zseb.speech._log;
@@ -121,12 +124,34 @@ window.zseb = {
             const sess = {
                 dotnet: dotnet, rec: null, prefix: '', text: '', committed: false, userStop: false,
                 gotStart: false, gotResult: false, restarts: 0, lastError: null, started: Date.now(),
-                watchdog: 0, noResultTimer: 0, noStartTimer: 0
+                watchdog: 0, noResultTimer: 0, noStartTimer: 0, silenceTimer: 0
             };
             s._session = sess;
 
             const status = function (kind) { dotnet.invokeMethodAsync('OnSpeechStatus', kind).catch(function () { }); };
-            const clearTimers = function () { clearTimeout(sess.watchdog); clearTimeout(sess.noResultTimer); clearTimeout(sess.noStartTimer); };
+            const clearTimers = function () {
+                clearTimeout(sess.watchdog); clearTimeout(sess.noResultTimer);
+                clearTimeout(sess.noStartTimer); clearTimeout(sess.silenceTimer);
+            };
+
+            // Csend-figyelés: minden új szövegnél újraindul. Ha lejár, az eddigi szöveget mentjük.
+            const armSilence = function () {
+                clearTimeout(sess.silenceTimer);
+                sess.silenceTimer = setTimeout(function () {
+                    if (s._session !== sess || sess.committed || !sess.text.trim()) return;
+                    s.log((s.silenceMs / 1000) + ' mp csend – mentés');
+                    sess.committed = true;
+                    try { sess.rec && sess.rec.stop(); } catch (e) { }
+                    // Ha az iPhone nem zárja le a felvételt, 2 mp múlva mi zárjuk le.
+                    setTimeout(function () {
+                        if (s._session === sess) {
+                            s.log('lezárás csend után');
+                            s.cancel();
+                            dotnet.invokeMethodAsync('OnSpeechEnd', sess.text, true);
+                        }
+                    }, 2000);
+                }, s.silenceMs);
+            };
             const finish = function () {
                 s.log('befejezés (szöveg: "' + sess.text + '", mentés: ' + sess.committed + ')');
                 clearTimers();
@@ -158,6 +183,7 @@ window.zseb = {
                     sess.gotResult = true;
                     s.log('onresult: "' + raw + '"');
                     dotnet.invokeMethodAsync('OnSpeechResult', sess.text);
+                    armSilence();
                     if (r.hit) {
                         sess.committed = true;
                         try { rec.stop(); } catch (err) { }
@@ -277,6 +303,7 @@ window.zseb = {
             clearTimeout(sess.watchdog);
             clearTimeout(sess.noResultTimer);
             clearTimeout(sess.noStartTimer);
+            clearTimeout(sess.silenceTimer);
             const rec = sess.rec;
             if (rec) {
                 rec.onstart = rec.onresult = rec.onerror = rec.onend = null;

@@ -26,7 +26,7 @@
                 <span class="voice-dot @(voiceListening ? "on" : null)"></span>
                 <strong>@(voiceListening ? "Hallgatlak…" : "Új teendő")</strong>
             </div>
-            <p class="voice-text">@(string.IsNullOrEmpty(voiceText) ? "Mondd a teendőt, a végén mondd: „vége”." : voiceText)</p>
+            <p class="voice-text">@(string.IsNullOrEmpty(voiceText) ? "Mondd a teendőt, a végén mondd: „vége” – vagy várj 5 mp-et." : voiceText)</p>
             @if (voiceListening && voiceStatus is not null)
             {
                 <p class="speech-status">@voiceStatus</p>
