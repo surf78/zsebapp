@@ -764,7 +764,7 @@ a.action { text-decoration: none; }
 .chips-scroll::-webkit-scrollbar { display: none; }
 .chips-scroll .chip { flex: none; }
 
-/* Ház / Lakás csoport kiemelt fejléce */
+/* Ház / Lakás / Rendszeres utalás csoport kiemelt fejléce */
 .group-header {
     display: flex;
     align-items: center;
@@ -782,6 +782,7 @@ a.action { text-decoration: none; }
 
 .group-header.house { --group: #ff7a3d; --group-bg: linear-gradient(135deg, #ffb238, #ff7a3d); }
 .group-header.flat { --group: #7b61ff; --group-bg: linear-gradient(135deg, #a18bff, #6a4cf0); }
+.group-header.transfer { --group: #0fa89a; --group-bg: linear-gradient(135deg, #3fd6b8, #0b8f8a); }
 
 .group-icon {
     display: inline-flex;

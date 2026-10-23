@@ -144,9 +144,9 @@
             {
                 @if (PropertyKind(g.Name) is { } kind)
                 {
-                    @* Ház / Lakás csoport: kiemelt fejléc ikonnal és a rendezetlen összeggel *@
+                    @* Ház / Lakás / Rendszeres utalás csoport: kiemelt fejléc ikonnal és a rendezetlen összeggel *@
                     <div class="group-header @kind">
-                        <span class="group-icon"><Icon Name="@(kind == "house" ? "home" : "building")" Size="20" /></span>
+                        <span class="group-icon"><Icon Name="@GroupIcon(kind)" Size="20" /></span>
                         <div class="group-title">
                             <strong>@g.Name</strong>
                             <small>@g.PaidCount/@g.Rows.Count fizetve@(g.Unpaid > 0 ? $" · rendezetlen: {Fmt.Ft(g.Unpaid)}" : "")</small>
@@ -303,11 +303,21 @@
     private string tDueDay = "";
     private string? tError;
 
-    /// <summary>"house" a Ház…, "flat" a Lakás… csoportokra (ezek kiemelt fejlécet kapnak), egyébként null.</summary>
+    /// <summary>
+    /// "house" a Ház…, "flat" a Lakás…, "transfer" a Rendszeres utalás csoportra (ezek kiemelt fejlécet kapnak), egyébként null.
+    /// </summary>
     private static string? PropertyKind(string group) =>
         group.StartsWith("Ház", StringComparison.OrdinalIgnoreCase) ? "house"
         : group.StartsWith("Lakás", StringComparison.OrdinalIgnoreCase) ? "flat"
+        : group.StartsWith("Rendszeres", StringComparison.OrdinalIgnoreCase) ? "transfer"
         : null;
+
+    private static string GroupIcon(string kind) => kind switch
+    {
+        "house" => "home",
+        "flat" => "building",
+        _ => "repeat",
+    };
 
     private static bool Same(string? a, string? b) =>
         a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
