@@ -76,9 +76,17 @@ window.zseb = {
         // egymás utáni felismeréseket indítunk, és a szöveget összefűzzük, amíg el nem hangzik
         // a záró szó ("vége"), meg nem állítják, vagy le nem jár az idő.
         // Állapotjelzés a .NET felé: OnSpeechStatus('audio' | 'sound' | 'speech' | 'no-result').
-        toggle: function (dotnet, lang, stopWord) {
+        toggle: function (dotnet, lang, stopWord, source) {
             const s = window.zseb.speech;
-            s.log('koppintás');
+            const now = Date.now();
+            s.log('koppintás (' + (source || 'gomb') + ')');
+            // Egy érintésből az iPhone több eseményt is küldhet (pl. touchend + dblclick).
+            // Ha ezt második koppintásnak vennénk, a felvétel azonnal leállna – ezért kihagyjuk.
+            if (now - (s._lastToggle || 0) < 800) {
+                s.log('ismételt jelzés kihagyva');
+                return;
+            }
+            s._lastToggle = now;
             if (s._session) {
                 const cur = s._session;
                 if (cur.userStop || !cur.gotStart && Date.now() - cur.started > 4000) {
@@ -209,7 +217,7 @@ window.zseb = {
         },
 
         attach: function (button, dotnet, lang, stopWord) {
-            const handler = function () { window.zseb.speech.toggle(dotnet, lang, stopWord); };
+            const handler = function () { window.zseb.speech.toggle(dotnet, lang, stopWord, 'gomb'); };
 
             button.addEventListener('click', handler);
             button._zsebSpeechHandler = handler;
@@ -220,9 +228,10 @@ window.zseb = {
         attachDoubleTap: function (dotnet, lang, stopWord) {
             const s = window.zseb.speech;
             s.detachDoubleTap();
-            let lastTime = 0, lastX = 0, lastY = 0;
+            let lastTime = 0, lastX = 0, lastY = 0, lastTouch = 0;
             const ignore = 'input, textarea, select, button, a, label, .chips, .voice-sheet, .tabbar, .voice-fab';
             const onTouchEnd = function (e) {
+                lastTouch = Date.now();
                 if (e.changedTouches.length !== 1 || e.touches.length > 0) return;
                 const t = e.target;
                 if (t.closest && t.closest(ignore)) { lastTime = 0; return; }
@@ -232,15 +241,18 @@ window.zseb = {
                 if (now - lastTime < 350 && near) {
                     lastTime = 0;
                     e.preventDefault();                       // ne legyen belőle kattintás / nagyítás
-                    s.toggle(dotnet, lang, stopWord);         // érintésből indul -> a Safari engedi
+                    s.toggle(dotnet, lang, stopWord, 'dupla koppintás');   // érintésből indul -> a Safari engedi
                     return;
                 }
                 lastTime = now; lastX = p.clientX; lastY = p.clientY;
             };
-            const onDblClick = function (e) {                 // asztali böngészőben egérrel
+            const onDblClick = function (e) {                 // csak asztali böngészőben, egérrel
+                // iPhone-on a dupla koppintás után a Safari dblclick-et is küld: azt már a
+                // touchend kezelte, ezért érintés után a dblclick-et figyelmen kívül hagyjuk.
+                if (Date.now() - lastTouch < 1500) return;
                 const t = e.target;
                 if (t.closest && t.closest(ignore)) return;
-                s.toggle(dotnet, lang, stopWord);
+                s.toggle(dotnet, lang, stopWord, 'dupla kattintás');
             };
             document.addEventListener('touchend', onTouchEnd, { passive: false });
             document.addEventListener('dblclick', onDblClick);
