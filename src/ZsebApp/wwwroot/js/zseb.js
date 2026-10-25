@@ -40,7 +40,7 @@ window.zseb = {
         silenceMs: 5000,
 
         // Az app verziója (a Hangfelismerés naplóban látszik, így ellenőrizhető, hogy frissült-e).
-        version: '2026-10-23c',
+        version: '2026-10-25a',
 
         // Diagnosztikai napló (Beállítások → Hangfelismerés napló), hogy iPhone-on is lássuk, mi történik.
         log: function (msg) {
@@ -145,7 +145,17 @@ window.zseb = {
             const norm = function (t) { return (t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); };
             sess.silenceTimer = setInterval(function () {
                 if (s._session !== sess) { clearInterval(sess.silenceTimer); return; }
-                if (sess.committed || sess.userStop || !sess.lastNorm) return;
+                if (sess.committed || sess.userStop) return;
+                if (!sess.lastNorm) {
+                    // Semmi nem hangzott el: a koppintás (illetve a mikrofon tényleges indulása) után 5 mp-cel leállunk, mentés nélkül.
+                    if (Date.now() - (sess.firstStart || sess.started) < s.silenceMs) return;
+                    clearInterval(sess.silenceTimer);
+                    s.log((s.silenceMs / 1000) + ' mp alatt semmi – leállítás mentés nélkül');
+                    s.cancel();
+                    dotnet.invokeMethodAsync('OnSpeechError', 'no-speech');
+                    dotnet.invokeMethodAsync('OnSpeechEnd', '', false);
+                    return;
+                }
                 if (Date.now() - sess.lastChange < s.silenceMs) return;
                 clearInterval(sess.silenceTimer);
                 s.log((s.silenceMs / 1000) + ' mp csend – mentés');
@@ -182,7 +192,7 @@ window.zseb = {
                 rec.maxAlternatives = 1;
                 sess.rec = rec;
 
-                rec.onstart = function () { sess.gotStart = true; s.log('onstart'); };
+                rec.onstart = function () { if (!sess.firstStart) sess.firstStart = Date.now(); sess.gotStart = true; s.log('onstart'); };
                 rec.onaudiostart = function () { s.log('onaudiostart'); if (!sess.gotResult) status('audio'); };
                 rec.onsoundstart = function () { s.log('onsoundstart'); if (!sess.gotResult) status('sound'); };
                 rec.onspeechstart = function () { s.log('onspeechstart'); if (!sess.gotResult) status('speech'); };
