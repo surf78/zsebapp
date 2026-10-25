@@ -16,7 +16,7 @@
 
 <div class="page">
     <form class="add-row" @onsubmit="Add">
-        <input class="input" placeholder="@(listening ? "Hallgatlak…" : Current is null ? "Új teendő…" : $"Új teendő – {Current}…")" maxlength="200" enterkeyhint="done"
+        <input class="input" placeholder="@(listening ? "Hallgatlak…" : $"Új teendő – {CurrentName}…")" maxlength="200" enterkeyhint="done"
                @bind="newTitle" @bind:event="oninput" @bind:after="OnTitleInput" aria-label="Új teendő" />
         @* A kattintást a zseb.js kezeli (a mikrofont csak közvetlen érintés indíthatja). *@
         <button type="button" class="icon-btn mic @(listening ? "listening" : null)" @ref="micButton"
@@ -33,7 +33,7 @@
     <div class="chips chips-scroll todo-groups" role="tablist" aria-label="Teendő-csoportok">
         <button type="button" role="tab" aria-selected="@(Current is null ? "true" : "false")"
                 class="chip neutral @(Current is null ? "selected" : null)" @onclick="() => SelectGroup(null)">
-            Mind <span class="chip-count">@Data.Todos.Count(t => !t.Done)</span>
+            @AppData.DefaultTodoGroup <span class="chip-count">@Data.Todos.Count(t => !t.Done && InDefault(t))</span>
         </button>
         @foreach (var g in Data.TodoGroups)
         {
@@ -74,7 +74,7 @@
             </div>
             @if (confirmGroupDelete)
             {
-                <p class="form-note">A csoport törlődik, a teendői megmaradnak csoport nélkül (a Mind alatt).</p>
+                <p class="form-note">A csoport törlődik, a teendői átkerülnek az Általános csoportba.</p>
                 <button type="button" class="btn danger block" @onclick="DeleteGroup">Igen, törlöm a csoportot</button>
             }
             else
@@ -83,18 +83,21 @@
             }
         </section>
     }
-    else if (Current is not null)
+    else
     {
         <div class="todo-group-bar">
-            <span>Az új teendők ide kerülnek: <strong>@Current</strong></span>
-            <button type="button" class="link-btn" @onclick="StartEditGroup">Szerkesztés</button>
+            <span>Az új teendők ide kerülnek: <strong>@CurrentName</strong></span>
+            @if (Current is not null)
+            {
+                <button type="button" class="link-btn" @onclick="StartEditGroup">Szerkesztés</button>
+            }
         </div>
     }
 
     @if (listening)
     {
         <p class="speech-hint listening" role="status">
-            Mondd a feladatot@(Current is null ? "" : $" (→ {Current})"), a végén mondd: „vége” – vagy csak várj 5 mp-et, és elmentem.
+            Mondd a feladatot (→ @CurrentName), a végén mondd: „vége” – vagy csak várj 5 mp-et, és elmentem.
             @if (speechStatus is not null)
             {
                 <span class="speech-status">@speechStatus</span>
@@ -111,7 +114,7 @@
     }
     else if (!Visible.Any())
     {
-        <EmptyState IconName="list" Title="@(Current is null ? "Nincs teendő" : $"Nincs teendő: {Current}")"
+        <EmptyState IconName="list" Title="@($"Nincs teendő: {CurrentName}")"
                     Text="Írd be fent az első feladatot, vagy koppints duplán a képernyőre, és mondd ki." />
     }
     else
@@ -132,10 +135,6 @@
                             @if (!string.IsNullOrEmpty(t.CreatedBy))
                             {
                                 <span class="by">@t.CreatedBy</span>
-                            }
-                            @if (Current is null && !string.IsNullOrWhiteSpace(t.Group))
-                            {
-                                <span class="todo-tag">@t.Group</span>
                             }
                         </div>
                     </div>
@@ -170,14 +169,19 @@
     private string? groupError;
     private bool confirmGroupDelete;
 
-    /// <summary>A kiválasztott csoport (null = Mind), ha még létezik.</summary>
+    /// <summary>A megnyitott csoport (null = Általános), ha még létezik.</summary>
     private string? Current => Data.ValidCurrentTodoGroup;
+
+    private string CurrentName => Data.CurrentTodoGroupName;
+
+    /// <summary>Az Általánoshoz tartozik: csoport nélküli vagy „Általános”.</summary>
+    private bool InDefault(TodoItem t) => AppData.IsDefaultTodoGroup(t.Group);
 
     private static bool Same(string? a, string? b) =>
         a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A kiválasztott csoport teendői (Mind = az összes).</summary>
-    private IEnumerable<TodoItem> Visible => Current is null ? Data.Todos : Data.Todos.Where(t => Same(t.Group, Current));
+    /// <summary>A megnyitott csoport teendői.</summary>
+    private IEnumerable<TodoItem> Visible => Current is null ? Data.Todos.Where(InDefault) : Data.Todos.Where(t => Same(t.Group, Current));
 
     private async Task SelectGroup(string? g)
     {
@@ -233,7 +237,7 @@
             groupError = "Add meg a csoport nevét.";
             return;
         }
-        if (!Same(name, old) && Data.TodoGroups.Any(g => Same(g, name)))
+        if (AppData.IsDefaultTodoGroup(name) || !Same(name, old) && Data.TodoGroups.Any(g => Same(g, name)))
         {
             groupError = "Ilyen nevű csoport már van.";
             return;
@@ -403,7 +407,7 @@
     {
         // Csak a látható (kiválasztott csoportbeli) készeket törli.
         var current = Current;
-        Data.Todos.RemoveAll(t => t.Done && (current is null || Same(t.Group, current)));
+        Data.Todos.RemoveAll(t => t.Done && (current is null ? InDefault(t) : Same(t.Group, current)));
         await Data.SaveTodosAsync();
     }
 }

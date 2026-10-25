@@ -24,7 +24,7 @@ Személyes iPhone-app (iPhone 11) István számára: teendők, jegyzetek, kiadá
 - GitHub Pages: a workflow a build előtt átírja a `<base href>`-et a repó nevére.
 
 ## Fő képernyők
-- Teendők (`/`) – felvétel dátuma, hangrögzítés („… vége” vagy 5 mp csend → automatikus mentés); csoportok (`AppSettings.TodoGroups`, `TodoItem.Group`): a kiválasztott csoportba (`AppData.CurrentTodoGroup`, csak helyben tárolt) kerül minden új teendő, a lebegő mikrofonnal felvett is
+- Teendők (`/`) – felvétel dátuma, hangrögzítés („… vége” vagy 5 mp csend → automatikus mentés); csoportok (`AppSettings.TodoGroups`, `TodoItem.Group`): alapból az „Általános” (Group = null) van megnyitva; ha másik csoport van megnyitva (`AppData.CurrentTodoGroup`, csak memóriában), oda kerül minden új teendő, a lebegő mikrofonnal felvett is
 - Jegyzetek (`/jegyzetek`)
 - Kiadások (`/kiadasok`)
 - Számlák (`/szamlak`) – havi nézet, csoportok, fix tételek (`BillTemplate`, alapértékek: `BillDefaults`), fizetési határidő, Rendezetlen (piros, alapértelmezett) / Fizetve (zöld); Mérőórák (`/szamlak/merok`)

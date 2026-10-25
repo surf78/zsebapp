@@ -51,7 +51,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Meters = await store.GetAsync(MetersKey, AppJsonContext.Default.ListMeterReading) ?? [];
         Settings = await store.GetAsync(SettingsKey, AppJsonContext.Default.AppSettings) ?? new();
         Settings.TodoGroups ??= [];
-        CurrentTodoGroup = await store.GetRawAsync(CurrentTodoGroupKey);
+        await store.RemoveAsync(CurrentTodoGroupKey);   // régi verzióból maradt
 
         // Fix tételek: első indításkor (vagy teljes törlés után) az alapértelmezett lista.
         var templates = await store.GetAsync(BillTemplatesKey, AppJsonContext.Default.ListBillTemplate);
@@ -235,41 +235,53 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
 
     // ---------- Teendő-csoportok ----------
 
+    /// <summary>Az alapértelmezett csoport: ide kerül minden teendő, ha nincs másik csoport megnyitva.</summary>
+    public const string DefaultTodoGroup = "Általános";
+
+    /// <summary>Korábbi verzió itt jegyezte meg a kiválasztott csoportot – már nem használjuk.</summary>
     private const string CurrentTodoGroupKey = "zseb.todos.current";
+
+    /// <summary>Az alapértelmezett csoporthoz tartozik-e (csoport nélküli vagy „Általános”).</summary>
+    public static bool IsDefaultTodoGroup(string? g) => string.IsNullOrWhiteSpace(g) || SameName(g, DefaultTodoGroup);
 
     private static bool SameName(string? a, string? b) =>
         a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Az összes teendő-csoport: a beállításokban tároltak (létrehozási sorrendben), majd a teendőkön szereplő továbbiak.</summary>
+    /// <summary>A saját teendő-csoportok (az Általános nélkül): a beállításokban tároltak (létrehozási sorrendben), majd a teendőkön szereplő továbbiak.</summary>
     public List<string> TodoGroups
     {
         get
         {
             var result = new List<string>();
             foreach (var g in Settings.TodoGroups.Concat(Todos.Select(t => t.Group ?? "")))
-                if (!string.IsNullOrWhiteSpace(g) && !result.Any(r => SameName(r, g))) result.Add(g.Trim());
+                if (!IsDefaultTodoGroup(g) && !result.Any(r => SameName(r, g))) result.Add(g.Trim());
             return result;
         }
     }
 
-    /// <summary>A Teendők oldalon kiválasztott csoport (null = Mind). Ebbe kerülnek az új (gépelt vagy hangos) teendők.</summary>
+    /// <summary>
+    /// A Teendők oldalon megnyitott csoport (null = Általános). Ebbe kerülnek az új (gépelt vagy hangos) teendők.
+    /// Nem tároljuk: az app indításakor mindig az Általános van megnyitva.
+    /// </summary>
     public string? CurrentTodoGroup { get; private set; }
 
-    /// <summary>A kiválasztott csoport, ha még létezik (a másik telefonon közben törölhették).</summary>
+    /// <summary>A megnyitott csoport, ha még létezik (a másik telefonon közben törölhették); null = Általános.</summary>
     public string? ValidCurrentTodoGroup => TodoGroups.FirstOrDefault(g => SameName(g, CurrentTodoGroup));
+
+    /// <summary>A megnyitott csoport neve (az Általános is).</summary>
+    public string CurrentTodoGroupName => ValidCurrentTodoGroup ?? DefaultTodoGroup;
 
     public Task SetCurrentTodoGroupAsync(string? group)
     {
-        CurrentTodoGroup = string.IsNullOrWhiteSpace(group) ? null : group.Trim();
-        // Csak ezen a telefonon jegyezzük meg (nem közös).
-        return CurrentTodoGroup is null ? store.RemoveAsync(CurrentTodoGroupKey).AsTask() : store.SetRawAsync(CurrentTodoGroupKey, CurrentTodoGroup);
+        CurrentTodoGroup = IsDefaultTodoGroup(group) ? null : group!.Trim();
+        return Task.CompletedTask;
     }
 
     /// <summary>Új csoport. Igaz, ha létrejött (ugyanilyen nevű még nem volt).</summary>
     public async Task<bool> AddTodoGroupAsync(string name)
     {
         name = name.Trim();
-        if (name.Length == 0 || TodoGroups.Any(g => SameName(g, name))) return false;
+        if (name.Length == 0 || IsDefaultTodoGroup(name) || TodoGroups.Any(g => SameName(g, name))) return false;
         Settings.TodoGroups.Add(name);
         await SaveSettingsAsync();
         return true;
@@ -278,7 +290,8 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     public async Task RenameTodoGroupAsync(string oldName, string newName)
     {
         newName = newName.Trim();
-        if (newName.Length == 0 || SameName(oldName, newName) && oldName.Trim() == newName) return;
+        if (newName.Length == 0 || IsDefaultTodoGroup(oldName) || IsDefaultTodoGroup(newName)) return;
+        if (SameName(oldName, newName) && oldName.Trim() == newName) return;
         var i = Settings.TodoGroups.FindIndex(g => SameName(g, oldName));
         if (i >= 0) Settings.TodoGroups[i] = newName; else Settings.TodoGroups.Add(newName);
         Settings.TodoGroups = Settings.TodoGroups.Where((g, k) => Settings.TodoGroups.FindIndex(x => SameName(x, g)) == k).ToList();
@@ -289,7 +302,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         TodosChanged?.Invoke();
     }
 
-    /// <summary>Csoport törlése. A teendői megmaradnak, csoport nélkül (a Mind nézetben).</summary>
+    /// <summary>Csoport törlése. A teendői átkerülnek az Általános csoportba.</summary>
     public async Task DeleteTodoGroupAsync(string name)
     {
         Settings.TodoGroups.RemoveAll(g => SameName(g, name));
