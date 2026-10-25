@@ -83,14 +83,12 @@
             }
         </section>
     }
-    else
+    else if (Current is not null)
     {
+        @* Csak megnyitott saját csoportnál; a fő oldalon (Általános) nem jelenik meg. *@
         <div class="todo-group-bar">
-            <span>Az új teendők ide kerülnek: <strong>@CurrentName</strong></span>
-            @if (Current is not null)
-            {
-                <button type="button" class="link-btn" @onclick="StartEditGroup">Szerkesztés</button>
-            }
+            <span>Az új teendők ide kerülnek: <strong>@Current</strong></span>
+            <button type="button" class="link-btn" @onclick="StartEditGroup">Szerkesztés</button>
         </div>
     }
 
