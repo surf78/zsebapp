@@ -1143,6 +1143,18 @@ a.action { text-decoration: none; }
 #blazor-error-ui .reload { margin-left: 8px; }
 #blazor-error-ui .dismiss { position: absolute; right: 16px; top: 12px; cursor: pointer; }
 
+/* ---------- Teendő-csoportok ---------- */
+.todo-groups { margin: 0 0 12px; }
+.chip-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28); font-size: 12px; font-weight: 800; text-align: center; }
+.chip:not(.selected) .chip-count { background: var(--fill); }
+.add-chip { border-style: dashed; }
+.group-form { margin-bottom: 12px; }
+.todo-group-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px;
+    padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--glass); font-size: 14px;
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+.todo-tag { padding: 0 8px; border-radius: 999px; background: var(--fill); color: var(--accent); font-weight: 700; font-size: 12.5px; }
+
 /* ---------- Közös használat (szinkron) ---------- */
 .sync-panel .link-btn { align-self: flex-start; }
 .sync-links { display: flex; flex-wrap: wrap; gap: 8px; }

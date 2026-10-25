@@ -9,6 +9,8 @@ public sealed class TodoItem
     public DateTime? CompletedAt { get; set; }
     /// <summary>Ki vette fel (közös használatnál a bejelentkezett felhasználó neve).</summary>
     public string? CreatedBy { get; set; }
+    /// <summary>Teendő-csoport (pl. „Bevásárlás”); null = csoport nélkül.</summary>
+    public string? Group { get; set; }
 }
 
 public sealed class Note
@@ -119,6 +121,9 @@ public sealed class AppSettings
 {
     /// <summary>A „Minden adat törlése” jelszavának SHA-256 kivonata (nem a jelszó maga).</summary>
     public string? DeletePasswordHash { get; set; }
+
+    /// <summary>A teendők csoportjai (a sorrend a létrehozásé). Régi beállításokban nincs – üres lista.</summary>
+    public List<string> TodoGroups { get; set; } = [];
 }
 
 /// <summary>Mérőóra-leolvasás, pl. Gáz – 12 345,678 m³ – 2026.10.21.</summary>

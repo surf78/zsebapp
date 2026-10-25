@@ -25,7 +25,7 @@
         <div class="voice-sheet" role="dialog" aria-label="Teendő rögzítése hanggal">
             <div class="voice-sheet-head">
                 <span class="voice-dot @(voiceListening ? "on" : null)"></span>
-                <strong>@(voiceListening ? "Hallgatlak…" : "Új teendő")</strong>
+                <strong>@(voiceListening ? "Hallgatlak…" : "Új teendő")@(Data.ValidCurrentTodoGroup is { } vg ? $" → {vg}" : "")</strong>
             </div>
             <p class="voice-text">@(string.IsNullOrEmpty(voiceText) ? "Mondd a teendőt, a végén mondd: „vége” – vagy várj 5 mp-et." : voiceText)</p>
             @if (voiceListening && voiceStatus is not null)
@@ -210,7 +210,7 @@
         voiceListening = false;
         voiceText = "";
         voiceError = null;
-        ShowToast($"Teendő mentve: {title}");
+        ShowToast(Data.ValidCurrentTodoGroup is { } g ? $"Teendő mentve ({g}): {title}" : $"Teendő mentve: {title}");
     }
 
     private async Task CancelVoice()

@@ -16,7 +16,7 @@
 
 <div class="page">
     <form class="add-row" @onsubmit="Add">
-        <input class="input" placeholder="@(listening ? "Hallgatlak…" : "Új teendő…")" maxlength="200" enterkeyhint="done"
+        <input class="input" placeholder="@(listening ? "Hallgatlak…" : Current is null ? "Új teendő…" : $"Új teendő – {Current}…")" maxlength="200" enterkeyhint="done"
                @bind="newTitle" @bind:event="oninput" @bind:after="OnTitleInput" aria-label="Új teendő" />
         @* A kattintást a zseb.js kezeli (a mikrofont csak közvetlen érintés indíthatja). *@
         <button type="button" class="icon-btn mic @(listening ? "listening" : null)" @ref="micButton"
@@ -29,10 +29,72 @@
         </button>
     </form>
 
+    @* Csoportok: a kiválasztott csoportba kerül minden új teendő (gépelve és hanggal is). *@
+    <div class="chips chips-scroll todo-groups" role="tablist" aria-label="Teendő-csoportok">
+        <button type="button" role="tab" aria-selected="@(Current is null ? "true" : "false")"
+                class="chip neutral @(Current is null ? "selected" : null)" @onclick="() => SelectGroup(null)">
+            Mind <span class="chip-count">@Data.Todos.Count(t => !t.Done)</span>
+        </button>
+        @foreach (var g in Data.TodoGroups)
+        {
+            <button type="button" role="tab" aria-selected="@(Same(g, Current) ? "true" : "false")"
+                    class="chip neutral @(Same(g, Current) ? "selected" : null)" @onclick="() => SelectGroup(g)">
+                @g <span class="chip-count">@Data.Todos.Count(t => !t.Done && Same(t.Group, g))</span>
+            </button>
+        }
+        <button type="button" class="chip neutral add-chip" @onclick="StartNewGroup">+ Csoport</button>
+    </div>
+
+    @if (groupMode == GroupMode.New)
+    {
+        <form class="card form group-form" @onsubmit="CreateGroup">
+            <input class="input" placeholder="Csoport neve, pl. Bevásárlás" maxlength="40" @bind="groupName" @bind:event="oninput" aria-label="Új csoport neve" />
+            @if (groupError is not null)
+            {
+                <p class="error">@groupError</p>
+            }
+            <div class="btn-row">
+                <button type="button" class="btn" @onclick="CloseGroupForm">Mégse</button>
+                <button type="submit" class="btn primary">Létrehozás</button>
+            </div>
+        </form>
+    }
+    else if (groupMode == GroupMode.Edit && Current is not null)
+    {
+        <section class="card form group-form">
+            <p class="form-title">Csoport: @Current</p>
+            <input class="input" maxlength="40" @bind="groupName" @bind:event="oninput" aria-label="Csoport neve" />
+            @if (groupError is not null)
+            {
+                <p class="error">@groupError</p>
+            }
+            <div class="btn-row">
+                <button type="button" class="btn" @onclick="CloseGroupForm">Mégse</button>
+                <button type="button" class="btn primary" @onclick="RenameGroup">Átnevezés</button>
+            </div>
+            @if (confirmGroupDelete)
+            {
+                <p class="form-note">A csoport törlődik, a teendői megmaradnak csoport nélkül (a Mind alatt).</p>
+                <button type="button" class="btn danger block" @onclick="DeleteGroup">Igen, törlöm a csoportot</button>
+            }
+            else
+            {
+                <button type="button" class="link-btn danger" @onclick="() => confirmGroupDelete = true">Csoport törlése</button>
+            }
+        </section>
+    }
+    else if (Current is not null)
+    {
+        <div class="todo-group-bar">
+            <span>Az új teendők ide kerülnek: <strong>@Current</strong></span>
+            <button type="button" class="link-btn" @onclick="StartEditGroup">Szerkesztés</button>
+        </div>
+    }
+
     @if (listening)
     {
         <p class="speech-hint listening" role="status">
-            Mondd a feladatot, a végén mondd: „vége” – vagy csak várj 5 mp-et, és elmentem.
+            Mondd a feladatot@(Current is null ? "" : $" (→ {Current})"), a végén mondd: „vége” – vagy csak várj 5 mp-et, és elmentem.
             @if (speechStatus is not null)
             {
                 <span class="speech-status">@speechStatus</span>
@@ -47,9 +109,10 @@
     @if (!loaded)
     {
     }
-    else if (Data.Todos.Count == 0)
+    else if (!Visible.Any())
     {
-        <EmptyState IconName="list" Title="Nincs teendő" Text="Írd be fent az első feladatot, vagy koppints duplán a képernyőre, és mondd ki." />
+        <EmptyState IconName="list" Title="@(Current is null ? "Nincs teendő" : $"Nincs teendő: {Current}")"
+                    Text="Írd be fent az első feladatot, vagy koppints duplán a képernyőre, és mondd ki." />
     }
     else
     {
@@ -69,6 +132,10 @@
                             @if (!string.IsNullOrEmpty(t.CreatedBy))
                             {
                                 <span class="by">@t.CreatedBy</span>
+                            }
+                            @if (Current is null && !string.IsNullOrWhiteSpace(t.Group))
+                            {
+                                <span class="todo-tag">@t.Group</span>
                             }
                         </div>
                     </div>
@@ -94,17 +161,106 @@
     private string? speechStatus;
     private CancellationTokenSource? stopWordCts;
 
-    private int DoneCount => Data.Todos.Count(t => t.Done);
-    private int OpenCount => Data.Todos.Count - DoneCount;
+    // ---------- Csoportok ----------
+
+    private enum GroupMode { None, New, Edit }
+
+    private GroupMode groupMode;
+    private string groupName = "";
+    private string? groupError;
+    private bool confirmGroupDelete;
+
+    /// <summary>A kiválasztott csoport (null = Mind), ha még létezik.</summary>
+    private string? Current => Data.ValidCurrentTodoGroup;
+
+    private static bool Same(string? a, string? b) =>
+        a is not null && b is not null && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A kiválasztott csoport teendői (Mind = az összes).</summary>
+    private IEnumerable<TodoItem> Visible => Current is null ? Data.Todos : Data.Todos.Where(t => Same(t.Group, Current));
+
+    private async Task SelectGroup(string? g)
+    {
+        CloseGroupForm();
+        await Data.SetCurrentTodoGroupAsync(g);
+    }
+
+    private void StartNewGroup()
+    {
+        groupMode = GroupMode.New;
+        groupName = "";
+        groupError = null;
+    }
+
+    private void StartEditGroup()
+    {
+        groupMode = GroupMode.Edit;
+        groupName = Current ?? "";
+        groupError = null;
+        confirmGroupDelete = false;
+    }
+
+    private void CloseGroupForm()
+    {
+        groupMode = GroupMode.None;
+        groupError = null;
+        confirmGroupDelete = false;
+    }
+
+    private async Task CreateGroup()
+    {
+        var name = groupName.Trim();
+        if (name.Length == 0)
+        {
+            groupError = "Add meg a csoport nevét.";
+            return;
+        }
+        if (!await Data.AddTodoGroupAsync(name))
+        {
+            groupError = "Ilyen nevű csoport már van.";
+            return;
+        }
+        CloseGroupForm();
+        await Data.SetCurrentTodoGroupAsync(name);   // az új csoport lesz kiválasztva
+    }
+
+    private async Task RenameGroup()
+    {
+        if (Current is not { } old) return;
+        var name = groupName.Trim();
+        if (name.Length == 0)
+        {
+            groupError = "Add meg a csoport nevét.";
+            return;
+        }
+        if (!Same(name, old) && Data.TodoGroups.Any(g => Same(g, name)))
+        {
+            groupError = "Ilyen nevű csoport már van.";
+            return;
+        }
+        await Data.RenameTodoGroupAsync(old, name);
+        CloseGroupForm();
+    }
+
+    private async Task DeleteGroup()
+    {
+        if (Current is not { } g) return;
+        await Data.DeleteTodoGroupAsync(g);
+        CloseGroupForm();
+    }
+
+    private int DoneCount => Visible.Count(t => t.Done);
+    private int OpenCount => Visible.Count() - DoneCount;
 
     private IEnumerable<TodoItem> Ordered =>
-        Data.Todos.Where(t => !t.Done).OrderByDescending(t => t.CreatedAt)
-            .Concat(Data.Todos.Where(t => t.Done).OrderByDescending(t => t.CompletedAt));
+        Visible.Where(t => !t.Done).OrderByDescending(t => t.CreatedAt)
+            .Concat(Visible.Where(t => t.Done).OrderByDescending(t => t.CompletedAt));
 
     protected override async Task OnInitializedAsync()
     {
         await Data.EnsureLoadedAsync();
         Data.TodosChanged += OnTodosChanged;
+        Data.Changed += OnTodosChanged;          // pl. a másik telefonon létrehozott csoport
         loaded = true;
     }
 
@@ -217,6 +373,7 @@
     public async ValueTask DisposeAsync()
     {
         Data.TodosChanged -= OnTodosChanged;
+        Data.Changed -= OnTodosChanged;
         stopWordCts?.Cancel();
         try
         {
@@ -244,7 +401,9 @@
 
     private async Task ClearDone()
     {
-        Data.Todos.RemoveAll(t => t.Done);
+        // Csak a látható (kiválasztott csoportbeli) készeket törli.
+        var current = Current;
+        Data.Todos.RemoveAll(t => t.Done && (current is null || Same(t.Group, current)));
         await Data.SaveTodosAsync();
     }
 }

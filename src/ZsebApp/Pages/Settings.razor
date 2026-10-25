@@ -70,8 +70,8 @@
             {
                 <p>
                     Ez egy <strong>beállítás-mentés</strong>: <strong>@(pendingImport.BillTemplates?.Count ?? 0)</strong> fix számlatétel
-                    (@(pendingImport.BillTemplates?.Select(t => t.Group).Distinct().Count() ?? 0) csoportban)@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszó" : "").
-                    A visszaállítás <strong>felülírja</strong> a jelenlegi fix tételeket@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszót" : ""); az adatok (teendők, számlák stb.) nem változnak.
+                    (@(pendingImport.BillTemplates?.Select(t => t.Group).Distinct().Count() ?? 0) csoportban)@(pendingImport.Settings?.TodoGroups is { Count: > 0 } tg ? $", {tg.Count} teendő-csoport" : "")@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszó" : "").
+                    A visszaállítás <strong>felülírja</strong> a jelenlegi fix tételeket@(pendingImport.Settings is not null ? ", a teendő-csoportokat" : "")@(pendingImport.Settings?.DeletePasswordHash is not null ? " és a törlési jelszót" : ""); az adatok (teendők, számlák stb.) nem változnak.
                 </p>
             }
             else
