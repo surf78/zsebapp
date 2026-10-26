@@ -87,7 +87,9 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         ("Villany", "Áram – Ház"),
         ("Villany – Ház", "Áram – Ház"),
         ("Villany – Lakás", "Áram – Lakás"),
-        ("Víz", "Víz – Főóra"),
+        ("Víz", "Víz – Főóra (405)"),
+        ("Víz – Főóra", "Víz – Főóra (405)"),
+        ("Víz – Locsoló", "Víz – Locsoló (586)"),
     ];
 
     private bool NeedsGroupMigration() =>

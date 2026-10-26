@@ -130,7 +130,7 @@ public sealed class AppSettings
 public sealed class MeterReading
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    /// <summary>A mérő neve: "Gáz", "Áram – Ház", "Áram – Lakás", "Víz – Locsoló" vagy "Víz – Főóra" (lásd <see cref="MeterTypes"/>).</summary>
+    /// <summary>A mérő neve: "Gáz", "Áram – Ház", "Áram – Lakás", "Víz – Locsoló (586)" vagy "Víz – Főóra (405)" (lásd <see cref="MeterTypes"/>).</summary>
     public string Meter { get; set; } = MeterTypes.All[0].Name;
     public decimal Value { get; set; }
     public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.Now);
@@ -146,8 +146,8 @@ public static class MeterTypes
         new("Gáz", "m³", "#ff7a00", "flame"),
         new("Áram – Ház", "kWh", "#e0a800", "bolt"),
         new("Áram – Lakás", "kWh", "#8a6df0", "bolt"),
-        new("Víz – Locsoló", "m³", "#12a37a", "drop"),
-        new("Víz – Főóra", "m³", "#0a8fc4", "drop"),
+        new("Víz – Locsoló (586)", "m³", "#12a37a", "drop"),
+        new("Víz – Főóra (405)", "m³", "#0a8fc4", "drop"),
     ];
 
     public static MeterType Get(string name) => All.FirstOrDefault(m => m.Name == name) ?? All[0];
