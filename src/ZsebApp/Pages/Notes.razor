@@ -16,12 +16,9 @@
         @if (!loaded)
         {
         }
-        else if (Data.Notes.Count == 0)
+        else if (Data.Notes.Count > 0)
         {
-            <EmptyState IconName="note" Title="Nincs jegyzet" Text="A + gombbal hozhatsz létre újat." />
-        }
-        else
-        {
+            @* Üres listánál nem jelenik meg semmi (a „Nincs jegyzet” ablakot István kérésére elhagytuk). *@
             <ul class="card list">
                 @foreach (var n in Data.Notes.OrderByDescending(n => n.UpdatedAt))
                 {
