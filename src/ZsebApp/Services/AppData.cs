@@ -69,6 +69,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         {
             await SaveBillTemplatesAsync();
             await SaveBillsAsync();
+            await SaveMetersAsync();
         }
     }
 
@@ -80,8 +81,15 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         ("Ház (Petróczy)", "Ház (Petrőczy)"),
     ];
 
+    /// <summary>Korábbi mérőnevek és az új nevük (a régi egyetlen „Villany” óra a házé lett).</summary>
+    private static readonly (string Old, string New)[] MeterRenames =
+    [
+        ("Villany", "Villany – Ház"),
+    ];
+
     private bool NeedsGroupMigration() =>
-        GroupRenames.Any(r => BillTemplates.Any(t => t.Group == r.Old) || Bills.Any(b => b.Group == r.Old));
+        GroupRenames.Any(r => BillTemplates.Any(t => t.Group == r.Old) || Bills.Any(b => b.Group == r.Old))
+        || MeterRenames.Any(r => Meters.Any(m => m.Meter == r.Old));
 
     /// <summary>A régi csoportneveket átírja az újra. Igaz, ha változott valami.</summary>
     private bool MigrateGroupNames()
@@ -92,6 +100,8 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             foreach (var t in BillTemplates.Where(t => t.Group == oldName)) { t.Group = newName; changed = true; }
             foreach (var b in Bills.Where(b => b.Group == oldName)) { b.Group = newName; changed = true; }
         }
+        foreach (var (oldName, newName) in MeterRenames)
+            foreach (var m in Meters.Where(m => m.Meter == oldName)) { m.Meter = newName; changed = true; }
         return changed;
     }
 
@@ -102,6 +112,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         if (!MigrateGroupNames()) return;
         await SaveBillTemplatesAsync();
         await SaveBillsAsync();
+        await SaveMetersAsync();
         Changed?.Invoke();
     }
 
@@ -173,7 +184,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             _ => json,
         };
         if (syncName == "todos") TodosChanged?.Invoke();
-        if (syncName is "bills" or "billtemplates" && NeedsGroupMigration()) _ = MigrateGroupNamesLaterAsync();
+        if (syncName is "bills" or "billtemplates" or "meters" && NeedsGroupMigration()) _ = MigrateGroupNamesLaterAsync();
         Changed?.Invoke();
         return result;
     }
