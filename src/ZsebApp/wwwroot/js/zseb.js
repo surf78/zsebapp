@@ -1,6 +1,29 @@
 // Kis JavaScript-segédek, amelyeket a C# kód JS interopon keresztül hív.
 window.zseb = {
     // iPhone-on a megosztási lapot nyitja meg ("Mentés a Fájlokba"), máshol letölti a fájlt.
+    // Szöveg vágólapra másolása (pl. a Parancsok beállításához). true = sikerült.
+    copyText: async function (text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch (e2) {
+                return false;
+            }
+        }
+    },
+
     saveFile: async function (filename, text, mime) {
         mime = mime || 'application/json';
         // CSV-nél BOM, hogy az Excel UTF-8-ként (ékezetekkel) nyissa meg.

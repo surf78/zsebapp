@@ -1,0 +1,124 @@
+@* Beállítások: a K&H SMS-ek automatikus rögzítése az iPhone Parancsok appjával (szerver nélkül, Firestore REST). *@
+@implements IDisposable
+@inject SyncService Sync
+@inject IJSRuntime JS
+
+<p class="section-label">Bank SMS (K&amp;H)</p>
+<section class="card form bank-setup">
+    @if (!S.Connected)
+    {
+        <p class="form-note">
+            Az automatikus rögzítéshez be kell jelentkezni a <strong>Közös használat</strong> résznél (fent).
+            Addig a Kiadások → Bank napló oldalon kézzel is beillesztheted az SMS-t.
+        </p>
+    }
+    else if (string.IsNullOrEmpty(S.SmsSecret))
+    {
+        <p class="form-note">
+            A K&amp;H mobilinfo SMS-ei automatikusan bekerülhetnek a Bank naplóba (terhelésnél a Kiadások közé is).
+            Ehhez egy titkos kulcs kell, amit csak az iPhone-od Parancsok appja ismer.
+        </p>
+        <Feedback Error="@error" Info="@info" />
+        <button type="button" class="btn primary block" disabled="@busy" @onclick="CreateSecret">Bekapcsolás (kulcs létrehozása)</button>
+    }
+    else
+    {
+        <p class="form-note ok">Bekapcsolva. Állítsd be egyszer az iPhone Parancsok appjában:</p>
+
+        <ol class="bank-steps">
+            <li><strong>Parancsok</strong> app → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Üzenet</strong>.</li>
+            <li><strong>Küldő:</strong> válaszd ki a <em>K&amp;H Mobilinfo</em>-t. <strong>Az üzenet tartalmazza:</strong> <code>HUF</code>
+                (így a belépési kódok nem mennek tovább). Kapcsold be: <strong>Azonnali futtatás</strong>.</li>
+            <li>Új üres parancs → művelet: <strong>URL tartalmának lekérése</strong>. Az URL helyére másold be ezt:
+                <div class="copy-row">
+                    <code class="copy-value">@S.SmsInboxUrl</code>
+                    <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsInboxUrl!, url: true)" aria-label="URL másolása">
+                        <Icon Name="copy" Size="18" />
+                    </button>
+                </div>
+            </li>
+            <li>A művelet kibontásával: <strong>Metódus: POST</strong>, <strong>Kérés törzse: JSON</strong>, majd add hozzá:
+                <ul>
+                    <li><code>fields</code> – típusa <strong>Szótár</strong>, és ebbe kerül:
+                        <ul>
+                            <li><code>text</code> – Szótár, benne <code>stringValue</code> (Szöveg) = <strong>Parancsbemenet</strong> (az üzenet szövege)</li>
+                            <li><code>secret</code> – Szótár, benne <code>stringValue</code> (Szöveg) = a kulcs:
+                                <div class="copy-row">
+                                    <code class="copy-value">@S.SmsSecret</code>
+                                    <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsSecret!, url: false)" aria-label="Kulcs másolása">
+                                        <Icon Name="copy" Size="18" />
+                                    </button>
+                                </div>
+                            </li>
+                            <li><code>at</code> (nem kötelező) – Szótár, benne <code>stringValue</code> = <strong>Jelenlegi dátum</strong> (ISO 8601)</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li>Kész. A következő K&amp;H SMS pár másodperc múlva megjelenik a <strong>Kiadások → Bank napló</strong> oldalon
+                (ha az app épp nincs nyitva, a következő megnyitáskor).</li>
+        </ol>
+
+        <Feedback Error="@error" Info="@info" />
+        <div class="btn-row">
+            <button type="button" class="btn" disabled="@busy" @onclick="SendTest">Próba SMS</button>
+            <button type="button" class="btn" disabled="@busy" @onclick="CreateSecret">Új kulcs</button>
+        </div>
+        <button type="button" class="link-btn danger" disabled="@busy" @onclick="TurnOff">Kikapcsolás</button>
+        <p class="report-note">Új kulcsnál a Parancsokban is ki kell cserélni. A kulcs nélkül senki nem tud SMS-t beküldeni.</p>
+    }
+</section>
+
+@code {
+    private SyncState S => Sync.State;
+    private bool busy;
+    private string? error;
+    private string? info;
+
+    /// <summary>Próba SMS a K&amp;H formátumában – jóváírás, hogy ne kerüljön a kiadások közé.</summary>
+    private const string TestSms = "K&H mobilinfo\n*\n1 BANKSZLA\nHUF\nJóváírás\nPróba\n+1 HUF\nZsebApp próba SMS";
+
+    protected override void OnInitialized() => Sync.StateChanged += OnState;
+    private void OnState() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Sync.StateChanged -= OnState;
+
+    private async Task Run(Func<Task<string?>> action, string? ok)
+    {
+        busy = true;
+        error = info = null;
+        try
+        {
+            var code = await action();
+            if (code is null) info = ok;
+            else error = code switch
+            {
+                "http-403" => "A Firebase elutasította (403). Ellenőrizd, hogy a legújabb szabályok közzé vannak-e téve (Firestore → Rules).",
+                "no-secret" => "Még nincs kulcs.",
+                _ => SyncText.ErrorMessage(code),
+            };
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string NewSecret()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(28);
+        return new string(bytes.Select(b => chars[b % chars.Length]).ToArray());
+    }
+
+    private Task CreateSecret() => Run(() => Sync.SetSmsSecretAsync(NewSecret()), "A kulcs elkészült.");
+    private Task TurnOff() => Run(() => Sync.SetSmsSecretAsync(null), "Kikapcsolva – a Parancsok már nem tud SMS-t beküldeni.");
+    private Task SendTest() => Run(() => Sync.SendTestSmsAsync(TestSms),
+        "Próba SMS elküldve – pár másodperc múlva megjelenik a Bank naplóban („ZsebApp próba SMS”, +1 Ft; törölheted).");
+
+    private async Task Copy(string text, bool url)
+    {
+        var ok = await JS.InvokeAsync<bool>("zseb.copyText", text);
+        error = null;
+        info = ok ? (url ? "URL vágólapra másolva." : "Kulcs vágólapra másolva.") : "Nem sikerült másolni – jelöld ki és másold kézzel.";
+    }
+}

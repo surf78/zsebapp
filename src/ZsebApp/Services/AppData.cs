@@ -19,6 +19,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     private const string BillsKey = "zseb.bills";
     private const string BillTemplatesKey = "zseb.billtemplates";
     private const string MetersKey = "zseb.meters";
+    private const string BankKey = "zseb.bank";
     private const string SettingsKey = "zseb.settings";
 
     private Task? _loading;
@@ -29,6 +30,8 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     public List<Bill> Bills { get; private set; } = [];
     public List<BillTemplate> BillTemplates { get; private set; } = [];
     public List<MeterReading> Meters { get; private set; } = [];
+    /// <summary>Bank napló: a K&amp;H SMS-ekből (lásd <see cref="AddBankSmsAsync"/>).</summary>
+    public List<BankEntry> Bank { get; private set; } = [];
     public AppSettings Settings { get; private set; } = new();
 
     /// <summary>Jelez, ha a teendők máshonnan (pl. a lebegő mikrofon gombról) változtak.</summary>
@@ -49,6 +52,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Expenses = await store.GetAsync(ExpensesKey, AppJsonContext.Default.ListExpense) ?? [];
         Bills = await store.GetAsync(BillsKey, AppJsonContext.Default.ListBill) ?? [];
         Meters = await store.GetAsync(MetersKey, AppJsonContext.Default.ListMeterReading) ?? [];
+        Bank = await store.GetAsync(BankKey, AppJsonContext.Default.ListBankEntry) ?? [];
         Settings = await store.GetAsync(SettingsKey, AppJsonContext.Default.AppSettings) ?? new();
         Settings.TodoGroups ??= [];
         await store.RemoveAsync(CurrentTodoGroupKey);   // régi verzióból maradt
@@ -139,6 +143,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     public Task SaveBillsAsync() => SaveAsync(BillsKey, Bills, AppJsonContext.Default.ListBill);
     public Task SaveBillTemplatesAsync() => SaveAsync(BillTemplatesKey, BillTemplates, AppJsonContext.Default.ListBillTemplate);
     public Task SaveMetersAsync() => SaveAsync(MetersKey, Meters, AppJsonContext.Default.ListMeterReading);
+    public Task SaveBankAsync() => SaveAsync(BankKey, Bank, AppJsonContext.Default.ListBankEntry);
     public Task SaveSettingsAsync() => SaveAsync(SettingsKey, Settings, AppJsonContext.Default.AppSettings);
 
     /// <summary>Mentés a telefonra, és (ha van kapcsolat) a változások kiírása a közös tárba.</summary>
@@ -167,6 +172,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         ["bills"] = JsonSerializer.Serialize(Bills, AppJsonContext.Default.ListBill),
         ["billtemplates"] = JsonSerializer.Serialize(BillTemplates, AppJsonContext.Default.ListBillTemplate),
         ["meters"] = JsonSerializer.Serialize(Meters, AppJsonContext.Default.ListMeterReading),
+        ["bank"] = JsonSerializer.Serialize(Bank, AppJsonContext.Default.ListBankEntry),
         ["settings"] = JsonSerializer.Serialize(Settings, AppJsonContext.Default.AppSettings),
     }, AppJsonContext.Default.DictionaryStringString);
 
@@ -185,6 +191,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             "bills" => Apply(BillsKey, json, Bills, x => Bills = x, t => t.Id, AppJsonContext.Default.ListBill),
             "billtemplates" => Apply(BillTemplatesKey, json, BillTemplates, x => BillTemplates = x, t => t.Id, AppJsonContext.Default.ListBillTemplate),
             "meters" => Apply(MetersKey, json, Meters, x => Meters = x, t => t.Id, AppJsonContext.Default.ListMeterReading),
+            "bank" => Apply(BankKey, json, Bank, x => Bank = x, t => t.Id, AppJsonContext.Default.ListBankEntry),
             "settings" => ApplySettings(json),
             _ => json,
         };
@@ -357,6 +364,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Expenses = Expenses,
         Bills = Bills,
         Meters = Meters,
+        Bank = Bank,
     };
 
     /// <summary>Beállítás-mentés: fix számlatételek (csoportokkal) és a törlési jelszó.</summary>
@@ -402,6 +410,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Expenses = backup.Expenses ?? [];
         Bills = backup.Bills ?? [];
         Meters = backup.Meters ?? [];
+        if (backup.Bank is not null) Bank = backup.Bank;
         if (backup.Kind is null && backup.BillTemplates is not null)
             BillTemplates = backup.BillTemplates;
         MigrateGroupNames();
@@ -410,6 +419,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         await SaveExpensesAsync();
         await SaveBillsAsync();
         await SaveMetersAsync();
+        await SaveBankAsync();
         await SaveBillTemplatesAsync();
         TodosChanged?.Invoke();
         Changed?.Invoke();
@@ -423,6 +433,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Expenses = [];
         Bills = [];
         Meters = [];
+        Bank = [];
         BillTemplates = BillDefaults.Create();
         // Mentéssel (nem kulcs-törléssel), hogy közös használatnál a felhőből is törlődjön.
         await SaveTodosAsync();
@@ -430,7 +441,73 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         await SaveExpensesAsync();
         await SaveBillsAsync();
         await SaveMetersAsync();
+        await SaveBankAsync();
         await SaveBillTemplatesAsync();
         TodosChanged?.Invoke();
+    }
+
+    // ---------- Bank napló (K&H SMS) ----------
+
+    /// <summary>
+    /// Egy banki SMS feldolgozása: bekerül a Bank naplóba, terhelésnél a Kiadások közé is.
+    /// <paramref name="sourceId"/> = a közös tárba érkezett SMS azonosítója: ebből képzett azonosítókkal
+    /// két telefon sem rögzíti kétszer. Visszaadja a (meglévő vagy új) bejegyzést; összeg nélküli üzenetnél null.
+    /// </summary>
+    public async Task<BankEntry?> AddBankSmsAsync(string text, string? sourceId = null, DateTime? receivedAt = null)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length == 0) return null;
+
+        var id = sourceId is null ? Guid.NewGuid() : BankSms.StableGuid("sms:" + sourceId);
+        if (Bank.FirstOrDefault(b => b.Id == id) is { } existing) return existing;
+
+        var p = BankSms.Parse(text);
+        // Összeg nélküli üzenet (pl. üdvözlés, egyszeri jelszó) nem kerül a naplóba.
+        if (p.Amount <= 0) return null;
+        var at = receivedAt ?? DateTime.Now;
+        var entry = new BankEntry
+        {
+            Id = id,
+            ReceivedAt = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second),
+            TransactionAt = p.TransactionAt,
+            Kind = p.Kind,
+            Amount = p.Amount,
+            Balance = p.Balance,
+            Merchant = p.Merchant,
+            Text = text,
+        };
+
+        if (entry.Kind == BankKinds.Debit && entry.Amount > 0)
+        {
+            var expense = new Expense
+            {
+                Id = BankSms.StableGuid("sms-expense:" + id),
+                Amount = (int)Math.Min(entry.Amount, int.MaxValue),
+                Category = BankSms.GuessCategory(entry.Merchant, text),
+                Date = DateOnly.FromDateTime(entry.When),
+                Description = entry.Merchant.Length > 0 ? entry.Merchant : "K&H terhelés",
+            };
+            if (!Expenses.Any(e => e.Id == expense.Id))
+            {
+                Expenses.Add(expense);
+                await SaveExpensesAsync();
+            }
+            entry.ExpenseId = expense.Id;
+        }
+
+        Bank.Add(entry);
+        await SaveBankAsync();
+        Changed?.Invoke();
+        return entry;
+    }
+
+    /// <summary>Bank napló bejegyzés törlése; ha volt belőle kiadás, azt is törli.</summary>
+    public async Task DeleteBankEntryAsync(BankEntry entry, bool withExpense)
+    {
+        Bank.Remove(entry);
+        if (withExpense && entry.ExpenseId is { } eid && Expenses.RemoveAll(e => e.Id == eid) > 0)
+            await SaveExpensesAsync();
+        await SaveBankAsync();
+        Changed?.Invoke();
     }
 }

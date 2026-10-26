@@ -33,6 +33,37 @@ public sealed class Expense
     public string Description { get; set; } = "";
 }
 
+/// <summary>Egy banki SMS (K&amp;H) feldolgozva: terhelés vagy jóváírás, összeg, egyenleg. A Bank naplóban jelenik meg.</summary>
+public sealed class BankEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>Mikor érkezett az SMS (a Parancsok küldi; ha nincs, a feldolgozás ideje).</summary>
+    public DateTime ReceivedAt { get; set; } = DateTime.Now;
+    /// <summary>A tranzakció időpontja az SMS szövegéből (ha benne van).</summary>
+    public DateTime? TransactionAt { get; set; }
+    /// <summary>"Terhelés", "Jóváírás" vagy "Ismeretlen" (lásd <see cref="BankKinds"/>).</summary>
+    public string Kind { get; set; } = BankKinds.Unknown;
+    /// <summary>Az összeg forintban, pozitív szám (az irányt a <see cref="Kind"/> adja).</summary>
+    public long Amount { get; set; }
+    /// <summary>Az SMS-ben szereplő felhasználható összeg / egyenleg.</summary>
+    public long? Balance { get; set; }
+    /// <summary>Kereskedő / partner / közlemény, ha kiolvasható.</summary>
+    public string Merchant { get; set; } = "";
+    /// <summary>Az SMS teljes szövege.</summary>
+    public string Text { get; set; } = "";
+    /// <summary>Terhelésnél az ebből létrehozott kiadás azonosítója.</summary>
+    public Guid? ExpenseId { get; set; }
+
+    public DateTime When => TransactionAt ?? ReceivedAt;
+}
+
+public static class BankKinds
+{
+    public const string Debit = "Terhelés";
+    public const string Credit = "Jóváírás";
+    public const string Unknown = "Ismeretlen";
+}
+
 /// <summary>Egy hónap számlája / utalása, pl. Ház (Petrőczy) – Gázszámla – 2026-10 – Rendezetlen – 12 340 Ft.</summary>
 public sealed class Bill
 {
@@ -180,6 +211,9 @@ public sealed class Backup
     /// <summary>Fix számlatételek. Régebbi mentésekben nincs benne (null) – ilyenkor a jelenlegiek maradnak.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public List<BillTemplate>? BillTemplates { get; set; }
+    /// <summary>Bank napló (K&amp;H SMS-ek). Régebbi mentésekben nincs benne (null) – ilyenkor a jelenlegi marad.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<BankEntry>? Bank { get; set; }
     /// <summary>Program-beállítások (törlési jelszó). Csak a beállítás-mentésben van.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public AppSettings? Settings { get; set; }

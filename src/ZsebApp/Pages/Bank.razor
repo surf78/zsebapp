@@ -1,0 +1,162 @@
+@page "/kiadasok/bank"
+@inherits DataPage
+@inject SyncService Sync
+
+<PageTitle>Bank napló – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Bank napló</h1>
+    <button class="icon-btn primary" @onclick="TogglePaste" aria-label="SMS beillesztése" aria-expanded="@(showPaste ? "true" : "false")">
+        <Icon Name="plus" Class="@(showPaste ? "rotate-45" : null)" />
+    </button>
+</header>
+
+<div class="page">
+    <ExpensesSubNav />
+
+    @if (showPaste)
+    {
+        <form class="card form" @onsubmit="AddPasted">
+            <p class="form-title">K&amp;H SMS beillesztése</p>
+            <textarea class="input bank-paste" rows="7" maxlength="2000" placeholder="Másold ide a K&amp;H mobilinfo SMS szövegét…"
+                      @bind="pasteText" @bind:event="oninput" aria-label="SMS szövege"></textarea>
+            @if (pasteError is not null)
+            {
+                <p class="error">@pasteError</p>
+            }
+            <button type="submit" class="btn primary block" disabled="@string.IsNullOrWhiteSpace(pasteText)">Feldolgozás</button>
+            <p class="form-note">Terhelésnél a kiadások közé is bekerül. Automatikusan is jöhet: Beállítások → Bank SMS (K&amp;H).</p>
+        </form>
+    }
+
+    @if (!loaded)
+    {
+    }
+    else
+    {
+        var entries = Data.Bank.OrderByDescending(b => b.When).ThenByDescending(b => b.ReceivedAt).ToList();
+        var latest = entries.FirstOrDefault(b => b.Balance is not null);
+        var month = DateOnly.FromDateTime(DateTime.Today);
+        var inMonth = entries.Where(b => b.When.Year == month.Year && b.When.Month == month.Month).ToList();
+
+        @if (latest is not null)
+        {
+            <section class="card bank-balance">
+                <span class="bank-balance-label">Felhasználható összeg</span>
+                <span class="bank-balance-value">@Fmt.Ft(latest.Balance!.Value)</span>
+                <span class="bank-balance-sub">@Fmt.FullDate(latest.When) @latest.When.ToString("HH:mm") szerint</span>
+            </section>
+        }
+
+        @if (entries.Count > 0)
+        {
+            <section class="bill-summary">
+                <div class="card bill-total unpaid">
+                    <span class="bill-total-label">Terhelés – @Fmt.MonthName(month.Month)</span>
+                    <span class="bill-total-value">@Fmt.Ft(inMonth.Where(b => b.Kind == BankKinds.Debit).Sum(b => b.Amount))</span>
+                    <span class="bill-total-sub">@inMonth.Count(b => b.Kind == BankKinds.Debit) db</span>
+                </div>
+                <div class="card bill-total paid">
+                    <span class="bill-total-label">Jóváírás – @Fmt.MonthName(month.Month)</span>
+                    <span class="bill-total-value">@Fmt.Ft(inMonth.Where(b => b.Kind == BankKinds.Credit).Sum(b => b.Amount))</span>
+                    <span class="bill-total-sub">@inMonth.Count(b => b.Kind == BankKinds.Credit) db</span>
+                </div>
+            </section>
+
+            <ul class="card list bank-list">
+                @foreach (var b in entries)
+                {
+                    var open = openId == b.Id;
+                    <li class="row bank-row" @key="b.Id">
+                        <div class="row-main tappable-area" @onclick="() => Toggle(b)">
+                            <div class="bill-name">@(b.Merchant.Length > 0 ? b.Merchant : b.Kind)</div>
+                            <div class="row-sub">
+                                <span>@Fmt.FullDate(b.When) @b.When.ToString("HH:mm")</span>
+                                @if (b.Balance is { } bal)
+                                {
+                                    <span>· egyenleg: @Fmt.Ft(bal)</span>
+                                }
+                            </div>
+                        </div>
+                        <span class="bank-amount @KindClass(b)">@Sign(b)@Fmt.Ft(b.Amount)</span>
+                        @if (open)
+                        {
+                            <div class="bank-detail">
+                                <pre class="bank-raw">@b.Text</pre>
+                                <div class="bank-actions">
+                                    <span class="form-note">
+                                        @(b.ExpenseId is not null && Data.Expenses.Any(e => e.Id == b.ExpenseId) ? "A kiadások között is szerepel." : b.Kind)
+                                    </span>
+                                    <button type="button" class="btn danger" @onclick="() => Delete(b)">Törlés</button>
+                                </div>
+                            </div>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="hint">
+                Még nincs banki SMS. Az iPhone Parancsok appjával automatikusan ide kerülnek
+                (Beállítások → Bank SMS (K&amp;H)), vagy a + gombbal kézzel is beillesztheted.
+            </p>
+        }
+    }
+</div>
+
+@code {
+    private bool loaded;
+    private bool showPaste;
+    private string pasteText = "";
+    private string? pasteError;
+    private Guid? openId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Data.EnsureLoadedAsync();
+        loaded = true;
+    }
+
+    private static string KindClass(BankEntry b) => b.Kind switch
+    {
+        BankKinds.Debit => "debit",
+        BankKinds.Credit => "credit",
+        _ => "unknown",
+    };
+
+    private static string Sign(BankEntry b) => b.Kind switch
+    {
+        BankKinds.Debit => "−",
+        BankKinds.Credit => "+",
+        _ => "",
+    };
+
+    private void TogglePaste()
+    {
+        showPaste = !showPaste;
+        pasteError = null;
+    }
+
+    private void Toggle(BankEntry b) => openId = openId == b.Id ? null : b.Id;
+
+    private async Task AddPasted()
+    {
+        var entry = await Data.AddBankSmsAsync(pasteText);
+        if (entry is null)
+        {
+            pasteError = "Nem találtam összeget az üzenetben (pl. „-2.000 HUF”).";
+            return;
+        }
+        pasteText = "";
+        pasteError = null;
+        showPaste = false;
+        openId = entry.Id;
+    }
+
+    private async Task Delete(BankEntry b)
+    {
+        openId = null;
+        await Data.DeleteBankEntryAsync(b, withExpense: true);
+    }
+}

@@ -5,6 +5,8 @@
 //                 households/{hid}/{kulcs}/{id}    { j: "<az elem JSON-ja>", by, at }
 // kulcs: todos | notes | expenses | bills | billtemplates | meters | settings (ez utóbbinál id = "main").
 //                 memberIndex/{email}              { hid } – ebből találja meg a belépő, melyik háztartás tagja.
+//                 households/{hid}/smsinbox/{id}   { text, secret, at } – a Parancsok (iPhone) ide küldi a banki SMS-t
+//                                                  REST-en, a háztartás smsSecret kulcsával; az app feldolgozza és törli.
 //
 // Szinkron: a .NET minden mentéskor elküldi a teljes listát (push). Csak azt írjuk ki, ami ahhoz képest változott,
 // amit a .NET legutóbb látott ("seen") – így a másik telefonról közben érkezett módosításokat nem írjuk felül.
@@ -22,7 +24,7 @@ import {
     arrayUnion, arrayRemove
 } from 'firebase/firestore';
 
-const KEYS = ['todos', 'notes', 'expenses', 'bills', 'billtemplates', 'meters', 'settings'];
+const KEYS = ['todos', 'notes', 'expenses', 'bills', 'billtemplates', 'meters', 'bank', 'settings'];
 const HID_KEY = 'zseb.sync.hid';
 
 const z = window.zseb = window.zseb || {};
@@ -61,7 +63,11 @@ function report() {
         online: S.online,
         pending: pending(),
         synced: S.phase === 'connected' && synced(),
-        error: S.error
+        error: S.error,
+        householdId: S.hid,
+        smsSecret: h ? (h.smsSecret || null) : null,
+        apiKey: S.app ? S.app.options.apiKey : null,
+        projectId: S.app ? S.app.options.projectId : null
     };
     S.dotnet.invokeMethodAsync('OnSyncState', JSON.stringify(st)).catch(() => { });
 }
@@ -109,8 +115,18 @@ function stopListeners() {
 function connect(hid) {
     stopListeners();
     S.hid = hid;
+    S.inbox = new Map();
     lsSet(HID_KEY, hid);
     setPhase('connected');
+
+    // Banki SMS-ek a Parancsokból: feldolgozzuk (Bank napló + Kiadások), majd töröljük a beérkezőt.
+    S.unsubs.push(onSnapshot(collection(S.db, 'households', hid, 'smsinbox'), snap => {
+        snap.docs.forEach(d => {
+            const v = d.data();
+            if (!S.inbox.has(d.id)) S.inbox.set(d.id, { text: String(v.text || ''), at: v.at ? String(v.at) : null });
+        });
+        processInbox();
+    }, err => console.error('ZsebApp smsinbox', err)));
 
     const hRef = doc(S.db, 'households', hid);
     S.unsubs.push(onSnapshot(hRef, snap => {
@@ -147,8 +163,35 @@ function connect(hid) {
                 console.error('ZsebApp sync: OnRemoteData', key, e);
             }
             report();
+            processInbox();
         }, err => onListenError(err)));
     });
+}
+
+// A beérkezett SMS-eket csak akkor dolgozzuk fel, ha a Bank és a Kiadások lista már megjött a felhőből
+// (különben a .NET mentése nem jutna fel). Egyszerre egyet, sorban.
+async function processInbox() {
+    if (S.inboxBusy || !S.inbox || S.inbox.size === 0 || !S.hid) return;
+    const ready = ['bank', 'expenses'].every(k => S.keys[k] && S.keys[k].seen);
+    if (!ready) return;
+    S.inboxBusy = true;
+    try {
+        for (const [id, v] of Array.from(S.inbox.entries())) {
+            if (v.done) continue;
+            const hid = S.hid;
+            try {
+                const ok = await S.dotnet.invokeMethodAsync('OnSmsInbox', id, v.text, v.at);
+                if (ok && hid === S.hid) {
+                    v.done = true;
+                    deleteDoc(doc(S.db, 'households', hid, 'smsinbox', id)).catch(e => console.error('ZsebApp smsinbox törlés', e));
+                }
+            } catch (e) {
+                console.error('ZsebApp OnSmsInbox', e);
+            }
+        }
+    } finally {
+        S.inboxBusy = false;
+    }
 }
 
 function onListenError(err) {
@@ -293,6 +336,34 @@ z.sync = {
     },
 
     findHousehold: async function () { await findHousehold(); },
+
+    // A Parancsokhoz tartozó titkos kulcs beállítása (null = kikapcsolás).
+    setSmsSecret: async function (secret) {
+        if (!S.hid) return 'invalid';
+        try { await updateDoc(doc(S.db, 'households', S.hid), { smsSecret: secret || null }); return null; }
+        catch (e) { return errCode(e); }
+    },
+
+    // Próba: ugyanúgy küld be egy SMS-t, ahogy a Parancsok fogja (REST, API-kulcs + titkos kulcs, bejelentkezés nélkül).
+    sendTestSms: async function (text) {
+        const h = S.household;
+        if (!S.hid || !h || !h.smsSecret) return 'no-secret';
+        const url = 'https://firestore.googleapis.com/v1/projects/' + S.app.options.projectId +
+            '/databases/(default)/documents/households/' + S.hid + '/smsinbox?key=' + S.app.options.apiKey;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: {
+                    text: { stringValue: text },
+                    secret: { stringValue: h.smsSecret },
+                    at: { stringValue: new Date().toISOString() }
+                } })
+            });
+            if (!res.ok) return 'http-' + res.status;
+            return null;
+        } catch (e) { return errCode(e); }
+    },
 
     // Közös tár létrehozása, a telefonon lévő adatok feltöltésével.
     createHousehold: async function () {

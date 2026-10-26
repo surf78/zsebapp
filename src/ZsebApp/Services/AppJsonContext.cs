@@ -19,6 +19,8 @@ namespace ZsebApp.Services;
 [JsonSerializable(typeof(Bill))]
 [JsonSerializable(typeof(BillTemplate))]
 [JsonSerializable(typeof(MeterReading))]
+[JsonSerializable(typeof(List<BankEntry>))]
+[JsonSerializable(typeof(BankEntry))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(SyncState))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

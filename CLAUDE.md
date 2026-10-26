@@ -26,7 +26,8 @@ Személyes iPhone-app (iPhone 11) István számára: teendők, jegyzetek, kiadá
 ## Fő képernyők
 - Teendők (`/`) – felvétel dátuma, hangrögzítés („… vége” vagy 5 mp csend → automatikus mentés); csoportok (`AppSettings.TodoGroups`, `TodoItem.Group`): alapból az „Általános” (Group = null) van megnyitva; ha másik csoport van megnyitva (`AppData.CurrentTodoGroup`, csak memóriában), oda kerül minden új teendő, a lebegő mikrofonnal felvett is
 - Jegyzetek (`/jegyzetek`)
-- Kiadások (`/kiadasok`)
+- Kiadások (`/kiadasok`); Bank napló (`/kiadasok/bank`): K&H mobilinfo SMS-ek (`BankEntry`, feldolgozás: `Services/BankSms.cs`), terhelésből automatikusan kiadás lesz
+  - Automatikus beküldés szerver nélkül: iPhone Parancsok automatizálás → Firestore REST `households/{hid}/smsinbox` (mezők: text, secret, at; a `secret` = a háztartás `smsSecret` mezője, a Beállítások → Bank SMS résznél jön létre) → a JS (`processInbox`) átadja a `SyncService.OnSmsInbox`-nak, majd törli. Az azonosítók az SMS dokumentumból képzettek (`BankSms.StableGuid`), így két telefon sem rögzíti kétszer.
 - Számlák (`/szamlak`) – havi nézet, csoportok, fix tételek (`BillTemplate`, alapértékek: `BillDefaults`), fizetési határidő, Rendezetlen (piros, alapértelmezett) / Fizetve (zöld); Mérőórák (`/szamlak/merok`)
 - Beállítások (`/beallitasok`) – mentés/visszaállítás JSON-ba, jelszóval védett teljes törlés; Riport (`/beallitasok/riport`) – kiadások + mérőóra-fogyasztás, CSV export
 - Lebegő mikrofon gomb minden oldalon (a Teendők kivételével), fülváltás balra/jobbra húzással.

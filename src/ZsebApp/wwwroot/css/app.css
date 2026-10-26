@@ -1157,6 +1157,29 @@ a.action { text-decoration: none; }
     -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
 .todo-tag { padding: 0 8px; border-radius: 999px; background: var(--fill); color: var(--accent); font-weight: 700; font-size: 12.5px; }
 
+/* ---------- Bank napló (K&H SMS) ---------- */
+.bank-balance { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; margin-bottom: 12px; }
+.bank-balance-label { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+.bank-balance-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bank-balance-sub { font-size: 13px; color: var(--muted); }
+.bank-list { margin-top: 12px; }
+.bank-row { align-items: flex-start; flex-wrap: wrap; padding-right: 14px; }
+.bank-detail { flex: 1 0 100%; padding-bottom: 12px; }
+.bank-row .row-sub { flex-wrap: wrap; column-gap: 6px; row-gap: 0; }
+.bank-amount { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px; }
+.bank-amount.debit { color: var(--unpaid); }
+.bank-amount.credit { color: var(--paid); }
+.bank-amount.unknown { color: var(--muted); }
+.bank-raw { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--fill); font: 13px/1.4 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-word; }
+.bank-actions { display: flex; margin-top: 10px; gap: 10px; align-items: center; justify-content: space-between; }
+.bank-paste { min-height: 150px; resize: vertical; font-size: 16px; line-height: 1.4; }
+.bank-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; line-height: 1.45; }
+.bank-steps ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.bank-steps code { font-size: 13px; padding: 1px 5px; border-radius: 6px; background: var(--fill); }
+.copy-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.copy-value { flex: 1; min-width: 0; padding: 8px 10px !important; overflow-wrap: anywhere; font-size: 12px !important; }
+
 /* ---------- Közös használat (szinkron) ---------- */
 .sync-panel .link-btn { align-self: flex-start; }
 .sync-links { display: flex; flex-wrap: wrap; gap: 8px; }

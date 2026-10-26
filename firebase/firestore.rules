@@ -38,7 +38,19 @@ service cloud.firestore {
 
       match /{coll}/{id} {
         allow read, write: if isMember(hid)
-          && coll in ['todos', 'notes', 'expenses', 'bills', 'billtemplates', 'meters', 'settings'];
+          && coll in ['todos', 'notes', 'expenses', 'bills', 'billtemplates', 'meters', 'bank', 'settings'];
+      }
+
+      // Banki SMS a Parancsokból (bejelentkezés nélkül): csak a háztartás titkos kulcsával lehet beküldeni,
+      // olvasni és törölni csak a tagok tudják (az app feldolgozás után törli).
+      match /smsinbox/{id} {
+        allow create: if request.resource.data.keys().hasOnly(['text', 'secret', 'at'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() < 2000
+          && request.resource.data.secret is string
+          && request.resource.data.secret.size() >= 16
+          && request.resource.data.secret == get(/databases/$(database)/documents/households/$(hid)).data.smsSecret;
+        allow read, delete: if isMember(hid);
       }
     }
   }

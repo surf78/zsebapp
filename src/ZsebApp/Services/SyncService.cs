@@ -21,7 +21,18 @@ public sealed class SyncState
     public bool Synced { get; set; }
     public string? Error { get; set; }
 
+    // Bank SMS (Parancsok → Firestore): a háztartás azonosítója, a titkos kulcs és a Firebase projekt adatai.
+    public string? HouseholdId { get; set; }
+    public string? SmsSecret { get; set; }
+    public string? ApiKey { get; set; }
+    public string? ProjectId { get; set; }
+
     public bool Connected => Phase == "connected";
+
+    /// <summary>A Parancsok által hívandó cím (Firestore REST), vagy null, ha nincs kapcsolat.</summary>
+    public string? SmsInboxUrl => Connected && HouseholdId is not null && ApiKey is not null && ProjectId is not null
+        ? $"https://firestore.googleapis.com/v1/projects/{ProjectId}/databases/(default)/documents/households/{HouseholdId}/smsinbox?key={ApiKey}"
+        : null;
 }
 
 /// <summary>Híd a .NET és a zseb.sync (Firebase) JS modul között.</summary>
@@ -65,6 +76,16 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     [JSInvokable]
     public string OnRemoteData(string key, string json) => data.ApplyRemote(key, json);
 
+    /// <summary>A Parancsokból érkezett banki SMS (a JS hívja, utána törli a beérkező dokumentumot).</summary>
+    [JSInvokable]
+    public async Task<bool> OnSmsInbox(string id, string text, string? at)
+    {
+        DateTime? when = DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dto) ? dto.LocalDateTime : null;
+        await data.AddBankSmsAsync(text, id, when);   // összeg nélküli üzenetet figyelmen kívül hagy
+        return true;                                   // feldolgozva → a JS törölheti a beérkezőt
+    }
+
     /// <summary>A közös tár létrehozásakor a telefonon lévő adatok (a JS szinkron hívja).</summary>
     [JSInvokable]
     public string ExportAll() => data.ExportAllJson();
@@ -78,6 +99,9 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     public Task<string?> CreateHouseholdAsync() => Call("zseb.sync.createHousehold");
     public Task<string?> AddMemberAsync(string email) => Call("zseb.sync.addMember", email);
     public Task<string?> RemoveMemberAsync(string email) => Call("zseb.sync.removeMember", email);
+    public Task<string?> SetSmsSecretAsync(string? secret) => Call("zseb.sync.setSmsSecret", secret);
+    /// <summary>Próba: ugyanúgy küld be egy SMS-t, ahogy a Parancsok fogja (REST-en, kulccsal).</summary>
+    public Task<string?> SendTestSmsAsync(string text) => Call("zseb.sync.sendTestSms", text);
     public Task FindHouseholdAsync() => js.InvokeVoidAsync("zseb.sync.findHousehold").AsTask();
     public Task SignOutAsync() => js.InvokeVoidAsync("zseb.sync.signOut").AsTask();
 
