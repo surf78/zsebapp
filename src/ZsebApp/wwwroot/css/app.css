@@ -611,6 +611,8 @@ input, textarea { font-size: 17px; }
 
 /* ---------- Mérőórák ---------- */
 .meter-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+/* Páratlan számú mérőnél az első (Gáz) teljes szélességű, a többi párban. */
+.meter-picker .meter-card:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 
 .meter-card {
     display: flex;

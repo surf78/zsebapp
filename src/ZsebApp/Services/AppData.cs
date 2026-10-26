@@ -81,10 +81,13 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         ("Ház (Petróczy)", "Ház (Petrőczy)"),
     ];
 
-    /// <summary>Korábbi mérőnevek és az új nevük (a régi egyetlen „Villany” óra a házé lett).</summary>
+    /// <summary>Korábbi mérőnevek és az új nevük (a régi egyetlen villanyóra a házé, a régi vízóra a főóra lett).</summary>
     private static readonly (string Old, string New)[] MeterRenames =
     [
-        ("Villany", "Villany – Ház"),
+        ("Villany", "Áram – Ház"),
+        ("Villany – Ház", "Áram – Ház"),
+        ("Villany – Lakás", "Áram – Lakás"),
+        ("Víz", "Víz – Főóra"),
     ];
 
     private bool NeedsGroupMigration() =>
