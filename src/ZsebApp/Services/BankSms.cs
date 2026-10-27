@@ -174,5 +174,7 @@ public static partial class BankSms
     }
 
     /// <summary>Ugyanabból a bemenetből mindig ugyanaz az azonosító (így két telefon nem rögzíti kétszer).</summary>
-    public static Guid StableGuid(string seed) => new(MD5.HashData(Encoding.UTF8.GetBytes(seed)));
+    public static Guid StableGuid(string seed) =>
+        // MD5 a böngészős (WebAssembly) .NET-ben nem elérhető – SHA-256 első 16 bájtja.
+        new(SHA256.HashData(Encoding.UTF8.GetBytes(seed)).AsSpan(0, 16));
 }
