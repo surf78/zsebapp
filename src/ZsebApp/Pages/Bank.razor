@@ -95,7 +95,24 @@
                 }
             </ul>
         }
-        else
+        @if (Sync.State.InboxError is { } ie)
+        {
+            <p class="error">A beérkező SMS-ek nem olvashatók (@ie). Ellenőrizd a Firestore szabályokat.</p>
+        }
+        @if (Sync.InboxLog.Count > 0 || Sync.State.InboxPending > 0)
+        {
+            <details class="card bank-log" open="@(entries.Count == 0)">
+                <summary>Beérkezett SMS-ek feldolgozása@(Sync.State.InboxPending > 0 ? $" – {Sync.State.InboxPending} várakozik" : "")</summary>
+                <ul>
+                    @foreach (var l in Sync.InboxLog)
+                    {
+                        <li><strong>@l.At.ToString("HH:mm:ss")</strong> @l.Result<br /><span class="muted">@(l.Preview.Length > 0 ? l.Preview : "(üres)")</span></li>
+                    }
+                </ul>
+            </details>
+        }
+
+        @if (entries.Count == 0)
         {
             <p class="hint">
                 Még nincs banki SMS. Az iPhone Parancsok appjával automatikusan ide kerülnek
@@ -111,6 +128,20 @@
     private string pasteText = "";
     private string? pasteError;
     private Guid? openId;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Sync.StateChanged += OnSyncState;
+    }
+
+    private void OnSyncState() => InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Sync.StateChanged -= OnSyncState;
+        base.Dispose();
+    }
 
     protected override async Task OnInitializedAsync()
     {

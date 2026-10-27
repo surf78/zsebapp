@@ -1163,6 +1163,9 @@ a.action { text-decoration: none; }
 .bank-balance-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .bank-balance-sub { font-size: 13px; color: var(--muted); }
 .bank-list { margin-top: 12px; }
+.bank-log { margin-top: 12px; padding: 12px 14px; font-size: 13.5px; }
+.bank-log summary { font-weight: 700; cursor: pointer; }
+.bank-log ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
 .bank-row { align-items: flex-start; flex-wrap: wrap; padding-right: 14px; }
 .bank-detail { flex: 1 0 100%; padding-bottom: 12px; }
 .bank-row .row-sub { flex-wrap: wrap; column-gap: 6px; row-gap: 0; }

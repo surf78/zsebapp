@@ -26,6 +26,10 @@ public sealed class SyncState
     public string? SmsSecret { get; set; }
     public string? ApiKey { get; set; }
     public string? ProjectId { get; set; }
+    /// <summary>A beérkezőben várakozó (még fel nem dolgozott) SMS-ek száma.</summary>
+    public int InboxPending { get; set; }
+    /// <summary>Ha a beérkező SMS-ek figyelése hibára futott (pl. a szabályok nincsenek közzétéve).</summary>
+    public string? InboxError { get; set; }
 
     public bool Connected => Phase == "connected";
 
@@ -34,6 +38,8 @@ public sealed class SyncState
         ? $"https://firestore.googleapis.com/v1/projects/{ProjectId}/databases/(default)/documents/households/{HouseholdId}/smsinbox?key={ApiKey}"
         : null;
 }
+
+public sealed record InboxLogItem(DateTime At, string Preview, string Result);
 
 /// <summary>Híd a .NET és a zseb.sync (Firebase) JS modul között.</summary>
 public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
@@ -76,14 +82,42 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     [JSInvokable]
     public string OnRemoteData(string key, string json) => data.ApplyRemote(key, json);
 
+    /// <summary>A beérkezett SMS-ek feldolgozásának naplója (ezen a telefonon, a legutóbbi 20) – hibakereséshez.</summary>
+    public List<InboxLogItem> InboxLog { get; } = [];
+
     /// <summary>A Parancsokból érkezett banki SMS (a JS hívja, utána törli a beérkező dokumentumot).</summary>
     [JSInvokable]
     public async Task<bool> OnSmsInbox(string id, string text, string? at)
     {
         DateTime? when = DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None, out var dto) ? dto.LocalDateTime : null;
-        await data.AddBankSmsAsync(text, id, when);   // összeg nélküli üzenetet figyelmen kívül hagy
-        return true;                                   // feldolgozva → a JS törölheti a beérkezőt
+        var preview = (text ?? "").Replace('\n', ' ').Trim();
+        if (preview.Length > 80) preview = preview[..80] + "…";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Log(preview, "Üres szöveg érkezett – a Parancsban a „Parancs bemenete” helyett az üzenet tartalmát kell beküldeni.");
+                return true;
+            }
+            var entry = await data.AddBankSmsAsync(text, id, when);
+            Log(preview, entry is null
+                ? "Nem találtam benne összeget – nem került a naplóba."
+                : $"Rögzítve: {entry.Kind}, {Fmt.Ft(entry.Amount)}");
+            return true;                               // feldolgozva → a JS törölheti a beérkezőt
+        }
+        catch (Exception ex)
+        {
+            Log(preview, "Hiba a feldolgozásnál: " + ex.Message);
+            return false;                              // megmarad a beérkezőben, később újrapróbáljuk
+        }
+    }
+
+    private void Log(string preview, string result)
+    {
+        InboxLog.Insert(0, new InboxLogItem(DateTime.Now, preview, result));
+        if (InboxLog.Count > 20) InboxLog.RemoveAt(InboxLog.Count - 1);
+        StateChanged?.Invoke();
     }
 
     /// <summary>A közös tár létrehozásakor a telefonon lévő adatok (a JS szinkron hívja).</summary>

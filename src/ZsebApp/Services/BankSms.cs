@@ -12,14 +12,15 @@ public static partial class BankSms
     public sealed record Parsed(string Kind, long Amount, long? Balance, DateTime? TransactionAt, string Merchant);
 
     // Összeg: "-2.000 HUF", "+50 000 Ft", "12.345,50 HUF", "2000 HUF"
-    private const string AmountPattern = @"(?<sign>[+\-−])?\s?(?<num>\d{1,3}(?:[.  ]\d{3})+|\d+)(?:,(?<frac>\d{1,2}))?\s*(?:HUF|Ft)\b";
+    private const string NumberPattern = @"(?<![\d:/.,])(?<sign>[+\-−])?\s?(?<num>\d{1,3}(?:[.\u00A0 ]\d{3})+|\d+)(?:,(?<frac>\d{1,2}))?";
+    private const string AmountPattern = NumberPattern + @"\s*(?:HUF|Ft)\b";
 
     [GeneratedRegex(AmountPattern, RegexOptions.IgnoreCase)]
     private static partial Regex AmountRegex();
 
     // Egyenleg: "Felhasználható összeg: 84.898 HUF", "Egyenleg: 84 898 Ft". Az ékezet nélküli, kisbetűs szövegen
     // keressük (a K&H „Felhasznàlhatò” alakot is küld), a pozíciók megegyeznek az eredetiével.
-    [GeneratedRegex(@"(?:felhasznalhato\s+(?:osszeg|egyenleg)|egyenleg|elerheto\s+osszeg)\s*:?\s*" + AmountPattern, RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:felhasznalhato\s+(?:osszeg|egyenleg)|egyenleg|elerheto\s+osszeg)\s*:?\s*" + NumberPattern + @"(?:\s*(?:HUF|Ft)\b)?", RegexOptions.IgnoreCase)]
     private static partial Regex BalanceRegex();
 
     // Dátum: "2026.10.25 12:34", "2026.10.25. 12:34:56", "2026-10-25 12:34", "26.10.25 12:34"
@@ -31,13 +32,19 @@ public static partial class BankSms
     private static partial Regex MerchantLabelRegex();
 
     /// <summary>Ékezetek nélküli, kisbetűs változat a kulcsszavak kereséséhez.</summary>
+    private const string Accented = "áàâäãåéèêëíìîïóòôöõőúùûüűýÿçñ";
+    private const string Ascii    = "aaaaaaeeeeiiiiooooooouuuuuyycn";
+
+    /// <summary>Ékezetek nélküli, kisbetűs változat a kulcsszavak kereséséhez (a hossz nem változik).</summary>
     public static string Plain(string text)
     {
-        var d = text.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(d.Length);
-        foreach (var c in d)
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) sb.Append(c);
-        return sb.ToString().Normalize(NormalizationForm.FormC).ToLowerInvariant();
+        var chars = text.ToLowerInvariant().ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var k = Accented.IndexOf(chars[i]);
+            if (k >= 0) chars[i] = Ascii[k];
+        }
+        return new string(chars);
     }
 
     public static Parsed Parse(string text)
@@ -116,8 +123,11 @@ public static partial class BankSms
         // K&H mobilinfo: „… Terhelés / Azonnali Forint átutalás BK / -2.000 HUF / Unicredit Bank Hungary Zrt., Budapest /
         // Felhasználható összeg: 84.898 HUF” – a partner az összeg és az egyenleg között áll (akár több sorban).
         var end = balance.Success && balance.Index > amount.Index ? balance.Index : text.Length;
-        var between = Tidy(DateRegex().Replace(text[(amount.Index + amount.Length)..end], " "));
-        if (between.Length >= 3) return between;
+        // Ha soronként jön (K&H kártyás vásárlás: „313 HUF / RONI ABC BUDAPEST HU / VARGA ISTVÁN / Egyenleg: …”),
+        // az összeg utáni első nem üres sor a kereskedő (utána a kártyabirtokos neve jönne).
+        var betweenRaw = DateRegex().Replace(text[(amount.Index + amount.Length)..end], " ");
+        var firstLine = betweenRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault(l => l.Length >= 3);
+        if (firstLine is not null) return Tidy(firstLine);
 
         // Ha ott nincs semmi: az összeg előtti sor (pl. „Azonnali Forint átutalás BK”), ha nem fejléc.
         var before = text[..amount.Index].Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

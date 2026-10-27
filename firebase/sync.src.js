@@ -66,6 +66,8 @@ function report() {
         error: S.error,
         householdId: S.hid,
         smsSecret: h ? (h.smsSecret || null) : null,
+        inboxPending: S.inbox ? Array.from(S.inbox.values()).filter(v => !v.done).length : 0,
+        inboxError: S.inboxError || null,
         apiKey: S.app ? S.app.options.apiKey : null,
         projectId: S.app ? S.app.options.projectId : null
     };
@@ -125,8 +127,9 @@ function connect(hid) {
             const v = d.data();
             if (!S.inbox.has(d.id)) S.inbox.set(d.id, { text: String(v.text || ''), at: v.at ? String(v.at) : null });
         });
+        report();
         processInbox();
-    }, err => console.error('ZsebApp smsinbox', err)));
+    }, err => { console.error('ZsebApp smsinbox', err); S.inboxError = errCode(err); report(); }));
 
     const hRef = doc(S.db, 'households', hid);
     S.unsubs.push(onSnapshot(hRef, snap => {
@@ -191,6 +194,7 @@ async function processInbox() {
         }
     } finally {
         S.inboxBusy = false;
+        report();
     }
 }
 
