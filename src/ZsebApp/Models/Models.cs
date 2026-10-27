@@ -53,8 +53,20 @@ public sealed class BankEntry
     public string Text { get; set; } = "";
     /// <summary>Terhelésnél az ebből létrehozott kiadás azonosítója.</summary>
     public Guid? ExpenseId { get; set; }
+    /// <summary>Csak ennél a tételnél megadott név (felülírja a párosítást).</summary>
+    public string? Label { get; set; }
 
     public DateTime When => TransactionAt ?? ReceivedAt;
+}
+
+/// <summary>Párosítás: ha a banki SMS partnere <see cref="Match"/>, a naplóban és a kiadásoknál <see cref="Name"/> látszik.</summary>
+public sealed class BankAlias
+{
+    /// <summary>A partner neve, ahogy az SMS-ben szerepel.</summary>
+    public string Match { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>A kiadás kategóriája ennél a partnernél (null = a tipp marad).</summary>
+    public string? Category { get; set; }
 }
 
 public static class BankKinds
@@ -155,6 +167,9 @@ public sealed class AppSettings
 
     /// <summary>A teendők csoportjai (a sorrend a létrehozásé). Régi beállításokban nincs – üres lista.</summary>
     public List<string> TodoGroups { get; set; } = [];
+
+    /// <summary>Bank napló: partner → saját név párosítások (pl. „Unicredit Bank Hungary Zrt., Budapest” → „PayPal számla”).</summary>
+    public List<BankAlias> BankAliases { get; set; } = [];
 }
 
 /// <summary>Mérőóra-leolvasás, pl. Gáz – 12 345,678 m³ – 2026.10.21.</summary>

@@ -69,7 +69,12 @@
                     var open = openId == b.Id;
                     <li class="row bank-row" @key="b.Id">
                         <div class="row-main tappable-area" @onclick="() => Toggle(b)">
-                            <div class="bill-name">@(b.Merchant.Length > 0 ? b.Merchant : b.Kind)</div>
+                            @{ var shown = Data.BankDisplayName(b); }
+                            <div class="bill-name">@shown</div>
+                            @if (b.Merchant.Length > 0 && shown != b.Merchant)
+                            {
+                                <div class="bank-partner">@b.Merchant</div>
+                            }
                             <div class="row-sub">
                                 <span>@Fmt.FullDate(b.When) @b.When.ToString("HH:mm")</span>
                                 @if (b.Balance is { } bal)
@@ -82,6 +87,28 @@
                         @if (open)
                         {
                             <div class="bank-detail">
+                                <form class="bank-name-form" @onsubmit="() => SaveName(b)">
+                                    <span class="filter-label">Név párosítása</span>
+                                    <input class="input" maxlength="60" placeholder="pl. PayPal számla" @bind="editName" @bind:event="oninput" aria-label="Név" />
+                                    @if (b.ExpenseId is not null && Data.Expenses.Any(e => e.Id == b.ExpenseId))
+                                    {
+                                        <div class="chips">
+                                            @foreach (var c in Categories.All)
+                                            {
+                                                <button type="button" class="chip @(c.Name == editCategory ? "selected" : null)" style="--chip:@c.Color"
+                                                        @onclick="() => editCategory = c.Name">@c.Name</button>
+                                            }
+                                        </div>
+                                    }
+                                    @if (b.Merchant.Length > 0)
+                                    {
+                                        <label class="check-row">
+                                            <input type="checkbox" @bind="editForAll" />
+                                            <span>Minden „@b.Merchant” tételnél (a későbbieknél is)</span>
+                                        </label>
+                                    }
+                                    <button type="submit" class="btn primary block">Mentés</button>
+                                </form>
                                 <pre class="bank-raw">@b.Text</pre>
                                 <div class="bank-actions">
                                     <span class="form-note">
@@ -95,6 +122,27 @@
                 }
             </ul>
         }
+        @if (Data.Settings.BankAliases.Count > 0)
+        {
+            <details class="card bank-log">
+                <summary>Párosított nevek (@Data.Settings.BankAliases.Count)</summary>
+                <ul class="list alias-list">
+                    @foreach (var a in Data.Settings.BankAliases.ToList())
+                    {
+                        <li class="row">
+                            <div class="row-main">
+                                <div class="bill-name">@a.Name</div>
+                                <div class="bank-partner">@a.Match@(a.Category is null ? "" : $" · {a.Category}")</div>
+                            </div>
+                            <button type="button" class="icon-btn ghost danger" @onclick="() => Data.DeleteBankAliasAsync(a)" aria-label="@($"{a.Name} párosítás törlése")">
+                                <Icon Name="trash" Size="18" />
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+
         @if (Sync.State.InboxError is { } ie)
         {
             <p class="error">A beérkező SMS-ek nem olvashatók (@ie). Ellenőrizd a Firestore szabályokat.</p>
@@ -169,7 +217,30 @@
         pasteError = null;
     }
 
-    private void Toggle(BankEntry b) => openId = openId == b.Id ? null : b.Id;
+    // Név párosítása
+    private string editName = "";
+    private string? editCategory;
+    private bool editForAll = true;
+
+    private void Toggle(BankEntry b)
+    {
+        if (openId == b.Id)
+        {
+            openId = null;
+            return;
+        }
+        openId = b.Id;
+        var alias = Data.FindBankAlias(b.Merchant);
+        editName = b.Label ?? alias?.Name ?? "";
+        editCategory = Data.Expenses.FirstOrDefault(e => e.Id == b.ExpenseId)?.Category ?? alias?.Category;
+        editForAll = b.Label is null && b.Merchant.Length > 0;
+    }
+
+    private async Task SaveName(BankEntry b)
+    {
+        await Data.SetBankNameAsync(b, editName, b.ExpenseId is null ? null : editCategory, editForAll && b.Merchant.Length > 0);
+        openId = null;
+    }
 
     private async Task AddPasted()
     {

@@ -55,6 +55,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Bank = await store.GetAsync(BankKey, AppJsonContext.Default.ListBankEntry) ?? [];
         Settings = await store.GetAsync(SettingsKey, AppJsonContext.Default.AppSettings) ?? new();
         Settings.TodoGroups ??= [];
+        Settings.BankAliases ??= [];
         await store.RemoveAsync(CurrentTodoGroupKey);   // régi verzióból maradt
 
         // Fix tételek: első indításkor (vagy teljes törlés után) az alapértelmezett lista.
@@ -237,6 +238,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         if (incoming is not null)
         {
             incoming.TodoGroups ??= [];
+            incoming.BankAliases ??= [];
             Settings = incoming;
         }
         var result = JsonSerializer.Serialize(Settings, AppJsonContext.Default.AppSettings);
@@ -399,6 +401,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             {
                 Settings = backup.Settings;
                 Settings.TodoGroups ??= [];
+                Settings.BankAliases ??= [];
                 await SaveSettingsAsync();
             }
             Changed?.Invoke();
@@ -479,13 +482,14 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
 
         if (entry.Kind == BankKinds.Debit && entry.Amount > 0)
         {
+            var alias = FindBankAlias(entry.Merchant);
             var expense = new Expense
             {
                 Id = BankSms.StableGuid("sms-expense:" + id),
                 Amount = (int)Math.Min(entry.Amount, int.MaxValue),
-                Category = BankSms.GuessCategory(entry.Merchant, text),
+                Category = alias?.Category ?? BankSms.GuessCategory(entry.Merchant, text),
                 Date = DateOnly.FromDateTime(entry.When),
-                Description = entry.Merchant.Length > 0 ? entry.Merchant : "K&H terhelés",
+                Description = BankDisplayName(entry) is { Length: > 0 } dn && dn != entry.Kind ? dn : "K&H terhelés",
             };
             if (!Expenses.Any(e => e.Id == expense.Id))
             {
@@ -499,6 +503,80 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         await SaveBankAsync();
         Changed?.Invoke();
         return entry;
+    }
+
+    // ---------- Párosított nevek ----------
+
+    /// <summary>A partner névből képzett összehasonlító kulcs (kisbetű, ékezet és fölös szóköz nélkül).</summary>
+    public static string AliasKey(string merchant) =>
+        string.Join(' ', BankSms.Plain(merchant ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim(' ', ',', '.');
+
+    public BankAlias? FindBankAlias(string merchant)
+    {
+        var key = AliasKey(merchant);
+        return key.Length == 0 ? null : Settings.BankAliases.FirstOrDefault(a => AliasKey(a.Match) == key);
+    }
+
+    /// <summary>A naplóban látható név: saját név → párosított név → partner → típus.</summary>
+    public string BankDisplayName(BankEntry b) =>
+        !string.IsNullOrWhiteSpace(b.Label) ? b.Label!
+        : FindBankAlias(b.Merchant)?.Name is { Length: > 0 } n ? n
+        : b.Merchant.Length > 0 ? b.Merchant : b.Kind;
+
+    /// <summary>
+    /// Név (és kategória) párosítása. <paramref name="forAll"/> = minden tételnél ennél a partnernél (a későbbieknél is),
+    /// különben csak ennél az egynél. Üres név = a párosítás / saját név törlése. A kapcsolódó kiadások is frissülnek.
+    /// </summary>
+    public async Task SetBankNameAsync(BankEntry entry, string name, string? category, bool forAll)
+    {
+        name = (name ?? "").Trim();
+        if (forAll && entry.Merchant.Length > 0)
+        {
+            var alias = FindBankAlias(entry.Merchant);
+            if (name.Length == 0)
+            {
+                if (alias is not null) Settings.BankAliases.Remove(alias);
+            }
+            else if (alias is null)
+            {
+                Settings.BankAliases.Add(new BankAlias { Match = entry.Merchant, Name = name, Category = category });
+            }
+            else
+            {
+                alias.Name = name;
+                alias.Category = category;
+            }
+            entry.Label = null;
+            await SaveSettingsAsync();
+        }
+        else
+        {
+            entry.Label = name.Length == 0 ? null : name;
+        }
+
+        // Kapcsolódó kiadások: ennél a tételnél, illetve párosításnál minden azonos partnerű (saját név nélküli) tételnél.
+        var key = AliasKey(entry.Merchant);
+        var affected = forAll && key.Length > 0
+            ? Bank.Where(b => b == entry || (AliasKey(b.Merchant) == key && string.IsNullOrWhiteSpace(b.Label))).ToList()
+            : [entry];
+        var expensesChanged = false;
+        foreach (var b in affected)
+        {
+            if (b.ExpenseId is not { } eid || Expenses.FirstOrDefault(e => e.Id == eid) is not { } exp) continue;
+            exp.Description = BankDisplayName(b) is { } dn && dn != b.Kind ? dn : "K&H terhelés";
+            if (category is not null) exp.Category = category;
+            expensesChanged = true;
+        }
+        if (expensesChanged) await SaveExpensesAsync();
+        await SaveBankAsync();
+        Changed?.Invoke();
+    }
+
+    public async Task DeleteBankAliasAsync(BankAlias alias)
+    {
+        Settings.BankAliases.Remove(alias);
+        await SaveSettingsAsync();
+        Changed?.Invoke();
     }
 
     /// <summary>Bank napló bejegyzés törlése; ha volt belőle kiadás, azt is törli.</summary>
