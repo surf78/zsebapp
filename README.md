@@ -2,6 +2,10 @@
 
 Teendők, jegyzetek és kiadáskövető egy appban. C#-ban írt **Blazor WebAssembly PWA**, amit iPhone-on a főképernyőről lehet indítani. Nem kell hozzá Mac, és nem kell Apple fejlesztői fiók.
 
+- **Az app címe:** https://surf78.github.io/zsebapp/
+- **GitHub:** `surf78/zsebapp`. 2026-10-28-ig `vargaistvan1978/zsebapp` volt – a repó régi címe átirányít, de a régi app-cím (`vargaistvan1978.github.io/zsebapp/`) **nem**: a telefonokon az appot az új címről kell újra a főképernyőhöz adni.
+- Fejlesztői útmutató: [CLAUDE.md](CLAUDE.md)
+
 ## Funkciók
 
 - **Teendők:** hozzáadás (a felvétel dátumával), késznek jelölés, törlés, a kész elemek egy gombbal törölhetők.
