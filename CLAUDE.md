@@ -5,7 +5,8 @@ Személyes iPhone-app (iPhone 11) István számára: teendők, jegyzetek, kiadá
 ## Munkamód
 - **Mindig magyarul válaszolj.**
 - Minden módosítás után **automatikusan commitolj és pusholj a `master` ágra** – István nem akar kézzel commitolni.
-  A push után a GitHub Actions („Publikálás GitHub Pagesre”) magától publikál: https://vargaistvan1978.github.io/zsebapp/
+  A push után a GitHub Actions („Publikálás GitHub Pagesre”) magától publikál: https://surf78.github.io/zsebapp/
+- GitHub: `surf78/zsebapp` (2026-10-28-ig `vargaistvan1978/zsebapp` volt). A GitHub Pages címe ezzel megváltozott, a régi `vargaistvan1978.github.io/zsebapp/` nem irányít át; új eredet = új localStorage, az adatok a Firebase-ből jönnek vissza belépés után.
 - A commit üzenet legyen rövid, magyar, és írja le a változást.
 - A felület szövegei magyarok; dátumformátum pl. „2026. 10. 22.”, hónap fejléc „2026-10 október”, pénz „12 340 Ft”.
 
