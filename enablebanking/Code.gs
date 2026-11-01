@@ -110,6 +110,15 @@ function idozitesBe() {
     Session.getScriptTimeZone() + ').';
 }
 
+/** Csak a ZsebApp gombja: nincs napi automatikus lekérés, a bank napi keretét te használod el a gombbal. */
+function csakGomb() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => ['lekeres', 'keresFigyeles'].indexOf(t.getHandlerFunction()) >= 0)
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('keresFigyeles').timeBased().everyMinutes(1).create();
+  return 'Automatikus lekérés kikapcsolva. A ZsebApp „Lekérés a banktól most” gombja működik (percenként figyeli).';
+}
+
 // ---------------------------------------------------------------- a ZsebApp gombja (percenként)
 
 /**
@@ -460,7 +469,7 @@ function oldal_(uzenet) {
     ${sor('Titkos kulcs (.pem)', p.PRIVATE_KEY ? 'megadva' : 'nincs megadva')}
     ${sor('ZsebApp beküldés', p.INBOX_URL && p.SECRET ? 'megadva' : 'nincs megadva')}
     ${sor('K&H összekapcsolás', kapcsolva ? 'érvényes eddig: ' + String(p.VALID_UNTIL || '?').slice(0, 10) : 'még nincs')}
-    ${sor('Időzítés', idozitve ? 'bekapcsolva (' + ORAK.join(', ') + ' óra)' : 'kikapcsolva')}
+    ${sor('Időzítés', idozitve ? 'bekapcsolva (' + ORAK.join(', ') + ' óra)' : 'kikapcsolva (csak kézi lekérés)')}
     ${sor('ZsebApp gomb (Lekérés most)', gomb ? 'figyeli (percenként)' : 'nincs bekapcsolva – nyomd meg az Időzítés bekapcsolása gombot')}
     ${sor('Utolsó lekérés', p.LAST_RESULT || '–')}
     ${p.LAST_ERROR ? '<p class="err">' + esc_(p.LAST_ERROR) + '</p>' : ''}
@@ -488,6 +497,7 @@ function oldal_(uzenet) {
   <div class="card">
     <p class="note">A bank a háttérben naponta 4 lekérést enged – ezért 4 időpont van. A „Lekérés most” (itt és a ZsebAppban) is beleszámít. Az időzítés bekapcsolása a ZsebApp gombját is bekapcsolja.</p>
     <button onclick="futtat('idozitesBe')">Időzítés bekapcsolása</button>
+    <button class="sec" onclick="futtat('csakGomb')">Csak kézi lekérés (ZsebApp gomb)</button>
     <button class="sec" onclick="futtat('lekeresMost')">Lekérés most</button>
   </div>
 
