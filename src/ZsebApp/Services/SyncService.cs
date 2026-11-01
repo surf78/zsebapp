@@ -112,9 +112,12 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
                 return true;
             }
             var entry = await data.AddBankSmsAsync(text, id, when);
+            var channel = BankSources.Label(BankQuick.Channel(text, out _));
             Log(preview, entry is null
                 ? "Nem találtam benne összeget – nem került a naplóba."
-                : $"Rögzítve: {entry.Kind}, {Fmt.Ft(entry.Amount)}");
+                : entry.Id != BankSms.StableGuid("sms:" + id)
+                    ? $"Már megvolt ({BankSources.Label(entry.Source)}) – összekapcsolva: {Fmt.Ft(entry.Amount)}"
+                    : $"Rögzítve ({channel}): {entry.Kind}, {Fmt.Ft(entry.Amount)}");
             return true;                               // feldolgozva → a JS törölheti a beérkezőt
         }
         catch (Exception ex)

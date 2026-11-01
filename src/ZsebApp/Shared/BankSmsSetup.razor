@@ -63,6 +63,45 @@
             </ol>
         </details>
 
+        <details class="bank-guide" open>
+            <summary>Kártyás fizetés azonnal – Apple Pay (iPhone Parancsok)</summary>
+            <p class="form-note">
+                Minden iPhone-os (vagy Apple Watch-os) Apple Pay fizetésnél azonnal bekerül, ingyen. Amikor a bank API
+                később lekéri ugyanezt a tételt, csak összekapcsolja – nem lesz dupla kiadás.
+            </p>
+            <ol class="bank-steps">
+                <li><strong>Parancsok</strong> → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Tárca</strong> (Tranzakció).
+                    Kártya: a <em>K&amp;H kártyád</em>; kategória: mind. Kapcsold be: <strong>Azonnali futtatás</strong> → Tovább → <strong>Új üres parancs</strong>.</li>
+                <li>Művelet: <strong>Szöveg</strong>. Három sor legyen benne:
+                    <ul>
+                        <li>1. sor: <code>@BankQuick.ApplePayPrefix</code></li>
+                        <li>2. sor: változó <strong>Parancsbemenet</strong> → koppints rá → <strong>Összeg</strong></li>
+                        <li>3. sor: változó <strong>Parancsbemenet</strong> → koppints rá → <strong>Kereskedő</strong></li>
+                    </ul>
+                </li>
+                <li>Művelet: <strong>URL tartalmának lekérése</strong> – ugyanúgy, mint az SMS-nél (lent): a fenti cím, POST, JSON,
+                    <code>fields</code> → <code>text</code> = a <strong>Szöveg</strong>, <code>secret</code> = a kulcs,
+                    <code>at</code> = <strong>Jelenlegi dátum</strong> (ISO 8601) – ez itt fontos, ebből lesz a fizetés időpontja.</li>
+                <li>Kipróbálni csak valódi fizetéssel lehet (a lejátszás gomb nem ad tranzakciót). A Bank naplóban „Apple Pay” jelöléssel jelenik meg.</li>
+            </ol>
+        </details>
+
+        <details class="bank-guide">
+            <summary>A K&amp;H mobilbank push-értesítése (iOS 27-től)</summary>
+            <p class="form-note">
+                iOS 27-től a Parancsok egy másik app értesítésére is lefuthat. Ha a K&amp;H mobilbank küld push-t a fizetésről,
+                az is bekerülhet – SMS-díj nélkül. (Ha mindkettő be van kapcsolva, ugyanaz a fizetés csak egyszer kerül be.)
+            </p>
+            <ol class="bank-steps">
+                <li><strong>Parancsok</strong> → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Értesítés</strong> → App: <em>K&amp;H mobilbank</em>;
+                    szűrő: az üzenet tartalmazza <code>HUF</code> (vagy <code>Ft</code>) → <strong>Azonnali futtatás</strong> → Új üres parancs.</li>
+                <li>Művelet: <strong>Szöveg</strong>: 1. sor <code>@BankQuick.PushPrefix</code>, 2. sor az <strong>Értesítés</strong> változó <em>címe</em>,
+                    3. sor az <strong>Értesítés</strong> <em>szövege</em>.</li>
+                <li><strong>URL tartalmának lekérése</strong> – mint az Apple Pay-nél (<code>text</code> = a Szöveg, <code>secret</code>, <code>at</code>).</li>
+                <li>Ha a Bank naplóban „Nem találtam benne összeget” jelenik meg, küldj egy képet a push-üzenetről, és igazítom a feldolgozást.</li>
+            </ol>
+        </details>
+
         <details class="bank-guide">
             <summary>SMS – iPhone Parancsok (tartalék; a K&amp;H SMS-enként díjat számol)</summary>
             <ol class="bank-steps">

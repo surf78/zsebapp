@@ -77,7 +77,11 @@
                             }
                             <div class="row-sub">
                                 <span>@Fmt.FullDate(b.When)@(b.DateOnlyKnown ? "" : " " + b.When.ToString("HH:mm"))</span>
-                                @if (b.Ref is not null)
+                                @if (b.Source is not null)
+                                {
+                                    <span>· @BankSources.Label(b.Source)</span>
+                                }
+                                @if (b.Ref is not null && b.Source != BankSources.EnableBanking)
                                 {
                                     <span>· bank API</span>
                                 }

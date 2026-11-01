@@ -452,7 +452,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     // ---------- Bank napló (K&H SMS) ----------
 
     /// <summary>
-    /// Egy banki SMS feldolgozása: bekerül a Bank naplóba, terhelésnél a Kiadások közé is.
+    /// Egy banki SMS (vagy Apple Pay / push üzenet, lásd <see cref="BankQuick"/>) feldolgozása: bekerül a Bank naplóba, terhelésnél a Kiadások közé is.
     /// <paramref name="sourceId"/> = a közös tárba érkezett SMS azonosítója: ebből képzett azonosítókkal
     /// két telefon sem rögzíti kétszer. Visszaadja a (meglévő vagy új) bejegyzést; összeg nélküli üzenetnél null.
     /// </summary>
@@ -464,23 +464,34 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         var id = sourceId is null ? Guid.NewGuid() : BankSms.StableGuid("sms:" + sourceId);
         if (Bank.FirstOrDefault(b => b.Id == id) is { } existing) return existing;
 
-        var p = BankSms.Parse(text);
+        // Csatorna: SMS (null), Apple Pay vagy a bank push-üzenete (Parancsok, előtaggal).
+        var source = BankQuick.Channel(text, out var body);
+        var p = source == BankSources.ApplePay ? BankQuick.ParseApplePay(body) : BankSms.Parse(body);
         // Összeg nélküli üzenet (pl. üdvözlés, egyszeri jelszó) nem kerül a naplóba.
-        if (p.Amount <= 0) return null;
+        if (p is null || p.Amount <= 0) return null;
         var at = receivedAt ?? DateTime.Now;
         var when = p.TransactionAt ?? at;
+        var shown = source == BankSources.ApplePay ? BankSources.Label(source) + "\n" + body : body;
 
-        // Ha ugyanez a tétel már megjött az Enable Bankingtől, az SMS csak kiegészíti (pontos idő, friss egyenleg).
+        // Ha ugyanez a tétel már megjött az Enable Bankingtől, ez csak kiegészíti (pontos idő, friss egyenleg).
         var twin = Bank
-            .Where(b => b.Source == BankSources.EnableBanking && !b.Text.Contains(SmsMark)
-                        && !Bank.Any(o => o.Source is null && o.Ref == b.Ref) && IsNear(b, p.Kind, p.Amount, when))
+            .Where(b => b.Source == BankSources.EnableBanking && !b.Text.Contains(MarkStart)
+                        && !Bank.Any(o => o.Source != BankSources.EnableBanking && o.Ref == b.Ref) && IsNear(b, p.Kind, p.Amount, when))
             .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
+            .FirstOrDefault()
+            // Vagy egy másik azonnali csatornán (SMS / Apple Pay / push) jött már meg, fél órán belül.
+            ?? Bank
+            .Where(b => b.Source != BankSources.EnableBanking && b.Source != source && !b.Text.Contains(Mark(source))
+                        && b.Kind == p.Kind && b.Amount == p.Amount && Math.Abs((b.When - when).TotalMinutes) <= 30)
+            .OrderBy(b => Math.Abs((b.When - when).TotalMinutes))
             .FirstOrDefault();
         if (twin is not null)
         {
-            twin.Text += "\n\n" + SmsMark + "\n" + text;
+            twin.Text += "\n\n" + Mark(source) + "\n" + body;
             if (p.TransactionAt is { } t) twin.TransactionAt = t;
+            else if (twin.DateOnlyKnown) twin.TransactionAt = at;
             if (p.Balance is { } bal) twin.Balance = bal;
+            if (twin.Merchant.Length == 0) twin.Merchant = p.Merchant;
             await SaveBankAsync();
             Changed?.Invoke();
             return twin;
@@ -489,23 +500,25 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         var entry = new BankEntry
         {
             Id = id,
+            Source = source,
             ReceivedAt = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second),
             TransactionAt = p.TransactionAt,
             Kind = p.Kind,
             Amount = p.Amount,
             Balance = p.Balance,
             Merchant = p.Merchant,
-            Text = text,
+            Text = shown,
         };
-        await AttachExpenseAsync(entry, text);
+        await AttachExpenseAsync(entry, body);
         Bank.Add(entry);
         await SaveBankAsync();
         Changed?.Invoke();
         return entry;
     }
 
-    /// <summary>Az SMS szövege így kerül az Enable Banking tétel nyers szövege alá, ha ugyanarról a tranzakcióról szól.</summary>
-    private const string SmsMark = "— SMS —";
+    /// <summary>Egy másik csatornán ugyanarról érkezett üzenet ezzel a fejléccel kerül a tétel nyers szövege alá.</summary>
+    private const string MarkStart = "— ";
+    private static string Mark(string? source) => MarkStart + BankSources.Label(source) + " —";
 
     /// <summary>
     /// Egy Enable Banking tétel (a Google Apps Script küldi, <see cref="BankEb"/>). A tranzakció kulcsából képzett
@@ -520,7 +533,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         var at = receivedAt ?? DateTime.Now;
         var when = t.Date ?? at;
         var twin = Bank
-            .Where(b => b.Source is null && b.Ref is null && IsNear(b, t.Kind, t.Amount, when))
+            .Where(b => b.Source != BankSources.EnableBanking && b.Ref is null && IsNear(b, t.Kind, t.Amount, when))
             .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
             .FirstOrDefault();
         if (twin is not null)

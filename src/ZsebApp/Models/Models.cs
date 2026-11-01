@@ -55,7 +55,7 @@ public sealed class BankEntry
     public Guid? ExpenseId { get; set; }
     /// <summary>Csak ennél a tételnél megadott név (felülírja a párosítást).</summary>
     public string? Label { get; set; }
-    /// <summary>Honnan jött: null = SMS / kézi beillesztés, "eb" = Enable Banking (a bank API-ja, Apps Scripten át).</summary>
+    /// <summary>Honnan jött: null = SMS / kézi beillesztés, egyébként <see cref="BankSources"/> (bank API, Apple Pay, push).</summary>
     public string? Source { get; set; }
     /// <summary>Az Enable Banking tranzakció kulcsa – az EB tételen, és azon az SMS tételen, amelyikkel párba állt.</summary>
     public string? Ref { get; set; }
@@ -68,7 +68,21 @@ public sealed class BankEntry
 
 public static class BankSources
 {
+    /// <summary>Enable Banking – a bank API-ja (Google Apps Script), könyvelt tételek.</summary>
     public const string EnableBanking = "eb";
+    /// <summary>Apple Pay fizetés – iPhone Parancsok, Tárca „Tranzakció” automatizálás.</summary>
+    public const string ApplePay = "applepay";
+    /// <summary>A K&amp;H mobilbank push-üzenete – iPhone Parancsok, iOS 27 „Értesítés” automatizálás.</summary>
+    public const string Push = "push";
+
+    /// <summary>A naplóban látható csatornanév; SMS-nél (null) is.</summary>
+    public static string Label(string? source) => source switch
+    {
+        EnableBanking => "bank API",
+        ApplePay => "Apple Pay",
+        Push => "push",
+        _ => "SMS",
+    };
 }
 
 /// <summary>Párosítás: ha a banki SMS partnere <see cref="Match"/>, a naplóban és a kiadásoknál <see cref="Name"/> látszik.</summary>

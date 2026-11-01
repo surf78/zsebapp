@@ -12,7 +12,7 @@ public static partial class BankSms
     public sealed record Parsed(string Kind, long Amount, long? Balance, DateTime? TransactionAt, string Merchant);
 
     // Összeg: "-2.000 HUF", "+50 000 Ft", "12.345,50 HUF", "2000 HUF"
-    private const string NumberPattern = @"(?<![\d:/.,])(?<sign>[+\-−])?\s?(?<num>\d{1,3}(?:[.\u00A0 ]\d{3})+|\d+)(?:,(?<frac>\d{1,2}))?";
+    private const string NumberPattern = @"(?<![\d:/.,])(?<sign>[+\-−])?\s?(?<num>\d{1,3}(?:[.\u00A0\u202F ]\d{3})+|\d+)(?:,(?<frac>\d{1,2}))?";
     private const string AmountPattern = NumberPattern + @"\s*(?:HUF|Ft)\b";
 
     [GeneratedRegex(AmountPattern, RegexOptions.IgnoreCase)]
