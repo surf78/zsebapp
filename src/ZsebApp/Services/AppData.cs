@@ -468,6 +468,24 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         // Összeg nélküli üzenet (pl. üdvözlés, egyszeri jelszó) nem kerül a naplóba.
         if (p.Amount <= 0) return null;
         var at = receivedAt ?? DateTime.Now;
+        var when = p.TransactionAt ?? at;
+
+        // Ha ugyanez a tétel már megjött az Enable Bankingtől, az SMS csak kiegészíti (pontos idő, friss egyenleg).
+        var twin = Bank
+            .Where(b => b.Source == BankSources.EnableBanking && !b.Text.Contains(SmsMark)
+                        && !Bank.Any(o => o.Source is null && o.Ref == b.Ref) && IsNear(b, p.Kind, p.Amount, when))
+            .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
+            .FirstOrDefault();
+        if (twin is not null)
+        {
+            twin.Text += "\n\n" + SmsMark + "\n" + text;
+            if (p.TransactionAt is { } t) twin.TransactionAt = t;
+            if (p.Balance is { } bal) twin.Balance = bal;
+            await SaveBankAsync();
+            Changed?.Invoke();
+            return twin;
+        }
+
         var entry = new BankEntry
         {
             Id = id,
@@ -479,30 +497,84 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             Merchant = p.Merchant,
             Text = text,
         };
-
-        if (entry.Kind == BankKinds.Debit && entry.Amount > 0)
-        {
-            var alias = FindBankAlias(entry.Merchant);
-            var expense = new Expense
-            {
-                Id = BankSms.StableGuid("sms-expense:" + id),
-                Amount = (int)Math.Min(entry.Amount, int.MaxValue),
-                Category = alias?.Category ?? BankSms.GuessCategory(entry.Merchant, text),
-                Date = DateOnly.FromDateTime(entry.When),
-                Description = BankDisplayName(entry) is { Length: > 0 } dn && dn != entry.Kind ? dn : "K&H terhelés",
-            };
-            if (!Expenses.Any(e => e.Id == expense.Id))
-            {
-                Expenses.Add(expense);
-                await SaveExpensesAsync();
-            }
-            entry.ExpenseId = expense.Id;
-        }
-
+        await AttachExpenseAsync(entry, text);
         Bank.Add(entry);
         await SaveBankAsync();
         Changed?.Invoke();
         return entry;
+    }
+
+    /// <summary>Az SMS szövege így kerül az Enable Banking tétel nyers szövege alá, ha ugyanarról a tranzakcióról szól.</summary>
+    private const string SmsMark = "— SMS —";
+
+    /// <summary>
+    /// Egy Enable Banking tétel (a Google Apps Script küldi, <see cref="BankEb"/>). A tranzakció kulcsából képzett
+    /// azonosítóval kétszer nem kerül be; ha ugyanez már SMS-ből megvan, csak összekapcsoljuk (nem lesz dupla kiadás).
+    /// </summary>
+    public async Task<BankEntry?> AddBankEbAsync(string text, DateTime? receivedAt = null)
+    {
+        if (BankEb.Parse(text) is not { } t || t.Amount <= 0) return null;
+        var id = BankSms.StableGuid("eb:" + t.Key);
+        if (Bank.FirstOrDefault(b => b.Id == id || b.Ref == t.Key) is { } existing) return existing;
+
+        var at = receivedAt ?? DateTime.Now;
+        var when = t.Date ?? at;
+        var twin = Bank
+            .Where(b => b.Source is null && b.Ref is null && IsNear(b, t.Kind, t.Amount, when))
+            .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
+            .FirstOrDefault();
+        if (twin is not null)
+        {
+            twin.Ref = t.Key;
+            twin.Balance ??= t.Balance;
+            await SaveBankAsync();
+            Changed?.Invoke();
+            return twin;
+        }
+
+        var entry = new BankEntry
+        {
+            Id = id,
+            Source = BankSources.EnableBanking,
+            Ref = t.Key,
+            ReceivedAt = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second),
+            TransactionAt = t.Date,
+            Kind = t.Kind,
+            Amount = t.Amount,
+            Balance = t.Balance,
+            Merchant = t.Name.Length > 0 ? t.Name : t.Remittance.Length > 60 ? t.Remittance[..60].TrimEnd() : t.Remittance,
+            Text = BankEb.Describe(t),
+        };
+        await AttachExpenseAsync(entry, t.Name + " " + t.Remittance);
+        Bank.Add(entry);
+        await SaveBankAsync();
+        Changed?.Invoke();
+        return entry;
+    }
+
+    /// <summary>Ugyanaz a tranzakció lehet: azonos irány és összeg, legfeljebb 4 nap eltérés (a kártyás tételt később könyvelik).</summary>
+    private static bool IsNear(BankEntry b, string kind, long amount, DateTime when) =>
+        b.Kind == kind && b.Amount == amount && Math.Abs((b.When.Date - when.Date).TotalDays) <= 4;
+
+    /// <summary>Terhelésnél kiadás is lesz belőle (a tétel azonosítójából képzett azonosítóval, így nem duplázódik).</summary>
+    private async Task AttachExpenseAsync(BankEntry entry, string text)
+    {
+        if (entry.Kind != BankKinds.Debit || entry.Amount <= 0) return;
+        var alias = FindBankAlias(entry.Merchant);
+        var expense = new Expense
+        {
+            Id = BankSms.StableGuid("sms-expense:" + entry.Id),
+            Amount = (int)Math.Min(entry.Amount, int.MaxValue),
+            Category = alias?.Category ?? BankSms.GuessCategory(entry.Merchant, text),
+            Date = DateOnly.FromDateTime(entry.When),
+            Description = BankDisplayName(entry) is { Length: > 0 } dn && dn != entry.Kind ? dn : "K&H terhelés",
+        };
+        if (!Expenses.Any(e => e.Id == expense.Id))
+        {
+            Expenses.Add(expense);
+            await SaveExpensesAsync();
+        }
+        entry.ExpenseId = expense.Id;
     }
 
     // ---------- Párosított nevek ----------

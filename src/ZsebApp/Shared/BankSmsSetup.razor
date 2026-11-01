@@ -1,9 +1,9 @@
-@* Beállítások: a K&H SMS-ek automatikus rögzítése az iPhone Parancsok appjával (szerver nélkül, Firestore REST). *@
+@* Beállítások: a K&H forgalom automatikus rögzítése – Enable Banking (Google Apps Script) vagy iPhone Parancsok SMS (Firestore REST). *@
 @implements IDisposable
 @inject SyncService Sync
 @inject IJSRuntime JS
 
-<p class="section-label">Bank SMS (K&amp;H)</p>
+<p class="section-label">Bank kapcsolat (K&amp;H)</p>
 <section class="card form bank-setup">
     @if (!S.Connected)
     {
@@ -15,49 +15,75 @@
     else if (string.IsNullOrEmpty(S.SmsSecret))
     {
         <p class="form-note">
-            A K&amp;H mobilinfo SMS-ei automatikusan bekerülhetnek a Bank naplóba (terhelésnél a Kiadások közé is).
-            Ehhez egy titkos kulcs kell, amit csak az iPhone-od Parancsok appja ismer.
+            A K&amp;H számlád forgalma automatikusan bekerülhet a Bank naplóba (terhelésnél a Kiadások közé is):
+            ingyenesen a bank API-ján (Enable Banking), vagy a K&amp;H mobilinfo SMS-eiből.
+            Ehhez egy titkos kulcs kell, amit csak a beküldő ismer.
         </p>
         <Feedback Error="@error" Info="@info" />
         <button type="button" class="btn primary block" disabled="@busy" @onclick="CreateSecret">Bekapcsolás (kulcs létrehozása)</button>
     }
     else
     {
-        <p class="form-note ok">Bekapcsolva. Állítsd be egyszer az iPhone Parancsok appjában:</p>
+        <p class="form-note ok">Bekapcsolva. Ezt a két adatot kell megadni a beküldőnek:</p>
+        <span class="filter-label">Beküldési cím (URL)</span>
+        <div class="copy-row">
+            <code class="copy-value">@S.SmsInboxUrl</code>
+            <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsInboxUrl!, url: true)" aria-label="URL másolása">
+                <Icon Name="copy" Size="18" />
+            </button>
+        </div>
+        <span class="filter-label">Kulcs</span>
+        <div class="copy-row">
+            <code class="copy-value">@S.SmsSecret</code>
+            <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsSecret!, url: false)" aria-label="Kulcs másolása">
+                <Icon Name="copy" Size="18" />
+            </button>
+        </div>
 
-        <ol class="bank-steps">
-            <li><strong>Parancsok</strong> app → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Üzenet</strong>.</li>
-            <li><strong>Küldő:</strong> válaszd ki a <em>K&amp;H Mobilinfo</em>-t. <strong>Az üzenet tartalmazza:</strong> <code>HUF</code>
-                (így a belépési kódok nem mennek tovább). Kapcsold be: <strong>Azonnali futtatás</strong>.</li>
-            <li>Új üres parancs → művelet: <strong>URL tartalmának lekérése</strong>. Az URL helyére másold be ezt:
-                <div class="copy-row">
-                    <code class="copy-value">@S.SmsInboxUrl</code>
-                    <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsInboxUrl!, url: true)" aria-label="URL másolása">
-                        <Icon Name="copy" Size="18" />
-                    </button>
-                </div>
-            </li>
-            <li>A művelet kibontásával: <strong>Metódus: POST</strong>, <strong>Kérés törzse: JSON</strong>, majd add hozzá:
-                <ul>
-                    <li><code>fields</code> – típusa <strong>Szótár</strong>, és ebbe kerül:
-                        <ul>
-                            <li><code>text</code> – Szótár, benne <code>stringValue</code> (Szöveg) = <strong>Parancsbemenet</strong> (az üzenet szövege)</li>
-                            <li><code>secret</code> – Szótár, benne <code>stringValue</code> (Szöveg) = a kulcs:
-                                <div class="copy-row">
-                                    <code class="copy-value">@S.SmsSecret</code>
-                                    <button type="button" class="icon-btn ghost" @onclick="() => Copy(S.SmsSecret!, url: false)" aria-label="Kulcs másolása">
-                                        <Icon Name="copy" Size="18" />
-                                    </button>
-                                </div>
-                            </li>
-                            <li><code>at</code> (nem kötelező) – Szótár, benne <code>stringValue</code> = <strong>Jelenlegi dátum</strong> (ISO 8601)</li>
-                        </ul>
-                    </li>
-                </ul>
-            </li>
-            <li>Kész. A következő K&amp;H SMS pár másodperc múlva megjelenik a <strong>Kiadások → Bank napló</strong> oldalon
-                (ha az app épp nincs nyitva, a következő megnyitáskor).</li>
-        </ol>
+        <details class="bank-guide" open>
+            <summary>Enable Banking – ingyenes, a bank API-ján (ajánlott)</summary>
+            <p class="form-note">
+                Egy Google Apps Script naponta 4× lekéri a könyvelt tételeket, és ide küldi. Egyszer kell beállítani
+                (számítógépen kényelmesebb), utána kb. 180 naponként újra jóváhagyni – előtte e-mailt kapsz.
+            </p>
+            <ol class="bank-steps">
+                <li><a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> → <strong>Új projekt</strong>,
+                    neve pl. <em>ZsebApp bank</em>. A <code>Code.gs</code> tartalmát cseréld le erre:
+                    <a href="@ScriptUrl" target="_blank" rel="noopener">enablebanking/Code.gs</a> (a GitHubon: <em>Raw</em> → mindent kijelöl, másol).</li>
+                <li><strong>Telepítés → Új telepítés</strong> → típus: <strong>Webalkalmazás</strong>; Végrehajtás: <em>én</em>,
+                    Hozzáférés: <em>csak én</em> → Telepítés → engedélyezd a hozzáférést. Másold ki a <strong>webalkalmazás URL-jét</strong>.</li>
+                <li><a href="https://enablebanking.com" target="_blank" rel="noopener">enablebanking.com</a> → regisztráció →
+                    <strong>Control Panel → API applications → Add</strong>: környezet <strong>Production</strong>,
+                    Redirect URL = a webalkalmazás URL-je (az adatvédelmi és ÁSZF címhez is jó). Létrehozáskor letöltődik egy <code>.pem</code> fájl – őrizd meg.</li>
+                <li>Ugyanott: <strong>Activate by linking accounts</strong> → K&amp;H → jóváhagyás a K&amp;H mobilbankban. Ettől lesz ingyenes (saját számla, korlátozott mód).</li>
+                <li>Nyisd meg a webalkalmazás URL-jét: add meg az <em>Application ID</em>-t, a <code>.pem</code> tartalmát,
+                    a fenti címet és kulcsot, és a számlád IBAN-ját → <strong>Mentés</strong> → <strong>Összekapcsolás</strong>
+                    (K&amp;H jóváhagyás) → <strong>Időzítés bekapcsolása</strong>.</li>
+                <li>Kész: a tételek a <strong>Kiadások → Bank napló</strong> oldalon jelennek meg („bank API”). Ezután a K&amp;H e-bankban lemondhatod a mobilinfót.</li>
+            </ol>
+        </details>
+
+        <details class="bank-guide">
+            <summary>SMS – iPhone Parancsok (tartalék; a K&amp;H SMS-enként díjat számol)</summary>
+            <ol class="bank-steps">
+                <li><strong>Parancsok</strong> app → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Üzenet</strong>.</li>
+                <li><strong>Küldő:</strong> válaszd ki a <em>K&amp;H Mobilinfo</em>-t. <strong>Az üzenet tartalmazza:</strong> <code>HUF</code>
+                    (így a belépési kódok nem mennek tovább). Kapcsold be: <strong>Azonnali futtatás</strong>.</li>
+                <li>Új üres parancs → művelet: <strong>URL tartalmának lekérése</strong>. Az URL helyére a fenti beküldési cím kerül.</li>
+                <li>A művelet kibontásával: <strong>Metódus: POST</strong>, <strong>Kérés törzse: JSON</strong>, majd add hozzá:
+                    <ul>
+                        <li><code>fields</code> – típusa <strong>Szótár</strong>, és ebbe kerül:
+                            <ul>
+                                <li><code>text</code> – Szótár, benne <code>stringValue</code> (Szöveg) = <strong>Parancsbemenet</strong> (az üzenet szövege)</li>
+                                <li><code>secret</code> – Szótár, benne <code>stringValue</code> (Szöveg) = a fenti kulcs</li>
+                                <li><code>at</code> (nem kötelező) – Szótár, benne <code>stringValue</code> = <strong>Jelenlegi dátum</strong> (ISO 8601)</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li>Ha ugyanaz a tétel SMS-ből és a bank API-ból is megjön, csak egyszer kerül a naplóba.</li>
+            </ol>
+        </details>
 
         <Feedback Error="@error" Info="@info" />
         <div class="btn-row">
@@ -65,12 +91,13 @@
             <button type="button" class="btn" disabled="@busy" @onclick="CreateSecret">Új kulcs</button>
         </div>
         <button type="button" class="link-btn danger" disabled="@busy" @onclick="TurnOff">Kikapcsolás</button>
-        <p class="report-note">Új kulcsnál a Parancsokban is ki kell cserélni. A kulcs nélkül senki nem tud SMS-t beküldeni.</p>
+        <p class="report-note">Új kulcsnál a webalkalmazásban (és a Parancsokban) is ki kell cserélni. A kulcs nélkül senki nem tud tételt beküldeni.</p>
     }
 </section>
 
 @code {
     private SyncState S => Sync.State;
+    private const string ScriptUrl = "https://github.com/surf78/zsebapp/blob/master/enablebanking/Code.gs";
     private bool busy;
     private string? error;
     private string? info;
@@ -111,7 +138,7 @@
     }
 
     private Task CreateSecret() => Run(() => Sync.SetSmsSecretAsync(NewSecret()), "A kulcs elkészült.");
-    private Task TurnOff() => Run(() => Sync.SetSmsSecretAsync(null), "Kikapcsolva – a Parancsok már nem tud SMS-t beküldeni.");
+    private Task TurnOff() => Run(() => Sync.SetSmsSecretAsync(null), "Kikapcsolva – sem a bank API, sem a Parancsok nem tud tételt beküldeni.");
     private Task SendTest() => Run(() => Sync.SendTestSmsAsync(TestSms),
         "Próba SMS elküldve – pár másodperc múlva megjelenik a Bank naplóban („ZsebApp próba SMS”, +1 Ft; törölheted).");
 

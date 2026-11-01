@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.JSInterop;
+using ZsebApp.Models;
 
 namespace ZsebApp.Services;
 
@@ -85,7 +86,7 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     /// <summary>A beérkezett SMS-ek feldolgozásának naplója (ezen a telefonon, a legutóbbi 20) – hibakereséshez.</summary>
     public List<InboxLogItem> InboxLog { get; } = [];
 
-    /// <summary>A Parancsokból érkezett banki SMS (a JS hívja, utána törli a beérkező dokumentumot).</summary>
+    /// <summary>A Parancsokból érkezett banki SMS vagy az Apps Scriptből érkezett Enable Banking tétel (a JS hívja, utána törli a beérkező dokumentumot).</summary>
     [JSInvokable]
     public async Task<bool> OnSmsInbox(string id, string text, string? at)
     {
@@ -98,6 +99,16 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
             if (string.IsNullOrWhiteSpace(text))
             {
                 Log(preview, "Üres szöveg érkezett – a Parancsban a „Parancs bemenete” helyett az üzenet tartalmát kell beküldeni.");
+                return true;
+            }
+            if (BankEb.IsEb(text))
+            {
+                var tx = BankEb.Parse(text);
+                var eb = await data.AddBankEbAsync(text, when);
+                Log(tx is null ? preview : $"Bank API: {tx.Name} {tx.Remittance}".Trim(), eb is null
+                    ? "Hibás banki tétel – kihagyva."
+                    : eb.Source == BankSources.EnableBanking ? $"Rögzítve (bank API): {eb.Kind}, {Fmt.Ft(eb.Amount)}"
+                    : $"Már megvolt SMS-ből – összekapcsolva: {Fmt.Ft(eb.Amount)}");
                 return true;
             }
             var entry = await data.AddBankSmsAsync(text, id, when);

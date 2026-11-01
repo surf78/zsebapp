@@ -55,8 +55,20 @@ public sealed class BankEntry
     public Guid? ExpenseId { get; set; }
     /// <summary>Csak ennél a tételnél megadott név (felülírja a párosítást).</summary>
     public string? Label { get; set; }
+    /// <summary>Honnan jött: null = SMS / kézi beillesztés, "eb" = Enable Banking (a bank API-ja, Apps Scripten át).</summary>
+    public string? Source { get; set; }
+    /// <summary>Az Enable Banking tranzakció kulcsa – az EB tételen, és azon az SMS tételen, amelyikkel párba állt.</summary>
+    public string? Ref { get; set; }
 
     public DateTime When => TransactionAt ?? ReceivedAt;
+    /// <summary>Csak dátum ismert (az Enable Banking könyvelési napot ad, időpontot nem).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool DateOnlyKnown => Source == BankSources.EnableBanking && TransactionAt is { TimeOfDay.Ticks: 0 };
+}
+
+public static class BankSources
+{
+    public const string EnableBanking = "eb";
 }
 
 /// <summary>Párosítás: ha a banki SMS partnere <see cref="Match"/>, a naplóban és a kiadásoknál <see cref="Name"/> látszik.</summary>

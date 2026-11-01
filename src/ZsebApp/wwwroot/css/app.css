@@ -1209,3 +1209,10 @@ a.action { text-decoration: none; }
 .add-member .input { flex: 1; min-width: 0; }
 
 .row-sub .by::before { content: "·"; margin-right: 8px; }
+
+/* ---------- Bank kapcsolat: leírások ---------- */
+.bank-guide { margin-top: 6px; padding: 10px 12px; border-radius: 12px; background: var(--fill); }
+.bank-guide summary { font-weight: 700; cursor: pointer; line-height: 1.35; }
+.bank-guide[open] summary { margin-bottom: 8px; }
+.bank-guide .form-note { margin: 0 0 10px; }
+.bank-guide a { color: var(--accent, inherit); font-weight: 600; }
