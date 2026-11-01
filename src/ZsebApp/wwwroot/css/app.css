@@ -1216,3 +1216,9 @@ a.action { text-decoration: none; }
 .bank-guide[open] summary { margin-bottom: 8px; }
 .bank-guide .form-note { margin: 0 0 10px; }
 .bank-guide a { color: var(--accent, inherit); font-weight: 600; }
+
+/* ---------- Bank napló: Lekérés most ---------- */
+.bank-fetch { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.bank-fetch .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.bank-fetch .form-note { margin: 0; font-size: 13.5px; }
+.bank-fetch .form-note.error { color: var(--danger); }

@@ -52,6 +52,20 @@ service cloud.firestore {
           && request.resource.data.secret == get(/databases/$(database)/documents/households/$(hid)).data.smsSecret;
         allow read, delete: if isMember(hid);
       }
+
+      // „Lekérés most” gomb (Enable Banking, Google Apps Script). A dokumentum azonosítója = a háztartás titkos kulcsa:
+      // a tagok írják (state = requested), az Apps Script bejelentkezés nélkül, csak a kulcs ismeretében olvassa
+      // és az állapotát frissíti (state, msg, done).
+      match /ebreq/{rid} {
+        allow read, write: if isMember(hid);
+        allow get: if rid.size() >= 16
+          && rid == get(/databases/$(database)/documents/households/$(hid)).data.smsSecret;
+        allow update: if rid.size() >= 16
+          && rid == get(/databases/$(database)/documents/households/$(hid)).data.smsSecret
+          && request.resource.data.keys().hasOnly(['state', 'msg', 'at', 'by', 'done'])
+          && request.resource.data.state in ['running', 'done', 'error']
+          && request.resource.data.msg is string && request.resource.data.msg.size() <= 400;
+      }
     }
   }
 }

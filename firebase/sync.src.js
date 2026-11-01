@@ -69,7 +69,11 @@ function report() {
         inboxPending: S.inbox ? Array.from(S.inbox.values()).filter(v => !v.done).length : 0,
         inboxError: S.inboxError || null,
         apiKey: S.app ? S.app.options.apiKey : null,
-        projectId: S.app ? S.app.options.projectId : null
+        projectId: S.app ? S.app.options.projectId : null,
+        ebState: S.ebReq ? (S.ebReq.state || null) : null,
+        ebMsg: S.ebReq ? (S.ebReq.msg || null) : null,
+        ebAt: S.ebReq ? (S.ebReq.at || null) : null,
+        ebDone: S.ebReq ? (S.ebReq.done || null) : null
     };
     S.dotnet.invokeMethodAsync('OnSyncState', JSON.stringify(st)).catch(() => { });
 }
@@ -110,8 +114,23 @@ function sameMap(a, b) {
 function stopListeners() {
     S.unsubs.forEach(u => { try { u(); } catch (e) { } });
     S.unsubs = [];
+    if (S.ebUnsub) { try { S.ebUnsub(); } catch (e) { } }
+    S.ebUnsub = null; S.ebSecret = null; S.ebReq = null;
     S.keys = {};
     S.household = null;
+}
+
+// A „Lekérés most” gomb kérésének állapota (households/{hid}/ebreq/{smsSecret}, az Apps Script frissíti).
+function watchEbReq() {
+    const secret = (S.household && S.household.smsSecret) || null;
+    if (secret === S.ebSecret) return;
+    if (S.ebUnsub) { try { S.ebUnsub(); } catch (e) { } }
+    S.ebUnsub = null; S.ebSecret = secret; S.ebReq = null;
+    if (!secret || !S.hid) return;
+    S.ebUnsub = onSnapshot(doc(S.db, 'households', S.hid, 'ebreq', secret), snap => {
+        S.ebReq = snap.exists() ? snap.data() : null;
+        report();
+    }, err => console.error('ZsebApp ebreq', err));
 }
 
 function connect(hid) {
@@ -135,6 +154,7 @@ function connect(hid) {
     S.unsubs.push(onSnapshot(hRef, snap => {
         if (!snap.exists()) return;
         S.household = snap.data();
+        watchEbReq();
         report();
     }, err => onListenError(err)));
 
@@ -346,6 +366,17 @@ z.sync = {
         if (!S.hid) return 'invalid';
         try { await updateDoc(doc(S.db, 'households', S.hid), { smsSecret: secret || null }); return null; }
         catch (e) { return errCode(e); }
+    },
+
+    // „Lekérés most”: kérés az Apps Scriptnek (percenként figyeli), az állapotot a watchEbReq hozza vissza.
+    requestBankFetch: async function () {
+        const h = S.household;
+        if (!S.hid || !h || !h.smsSecret) return 'no-secret';
+        try {
+            await setDoc(doc(S.db, 'households', S.hid, 'ebreq', h.smsSecret),
+                { state: 'requested', at: new Date().toISOString(), by: email(), msg: '', done: '' });
+            return null;
+        } catch (e) { return errCode(e); }
     },
 
     // Próba: ugyanúgy küld be egy SMS-t, ahogy a Parancsok fogja (REST, API-kulcs + titkos kulcs, bejelentkezés nélkül).

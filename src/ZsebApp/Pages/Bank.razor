@@ -48,6 +48,19 @@
             </section>
         }
 
+        @if (Sync.State.Connected && !string.IsNullOrEmpty(Sync.State.SmsSecret))
+        {
+            <section class="card bank-fetch">
+                <button type="button" class="btn block" disabled="@(fetchBusy || EbPending)" @onclick="FetchNow">
+                    <Icon Name="bank" Size="18" /> @(EbPending ? "Lekérés folyamatban…" : "Lekérés a banktól most")
+                </button>
+                @if (EbStatus is { } st)
+                {
+                    <p class="form-note @(Sync.State.EbState == "error" ? "error" : null)">@st</p>
+                }
+            </section>
+        }
+
         @if (entries.Count > 0)
         {
             <section class="bill-summary">
@@ -222,6 +235,41 @@
         BankKinds.Credit => "+",
         _ => "",
     };
+
+    // „Lekérés most” (Enable Banking, Apps Script)
+    private bool fetchBusy;
+    private string? fetchError;
+
+    private static DateTime? Iso(string? s) =>
+        DateTimeOffset.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d.LocalDateTime : null;
+
+    /// <summary>Folyamatban van-e egy (5 percnél nem régebbi) kérés.</summary>
+    private bool EbPending => Sync.State.EbState is "requested" or "running"
+        && Iso(Sync.State.EbDone ?? Sync.State.EbAt) is { } t && DateTime.Now - t < TimeSpan.FromMinutes(5);
+
+    private string? EbStatus => fetchError ?? Sync.State.EbState switch
+    {
+        "requested" when EbPending => "Kérés elküldve – a bank-szkript 1 percen belül lekéri a tételeket.",
+        "requested" or "running" when !EbPending => "A bank-szkript nem válaszolt. A webalkalmazásban nyomd meg az „Időzítés bekapcsolása” gombot (ez kapcsolja be ezt a gombot is).",
+        "running" => "A bank-szkript most kéri le a tételeket…",
+        "done" or "error" => $"{(Iso(Sync.State.EbDone) is { } d ? Fmt.FullDate(d) + " " + d.ToString("HH:mm") + " – " : "")}{Sync.State.EbMsg}",
+        _ => "Az Enable Banking tételeket azonnal lekéri (a bank naponta kb. 4 lekérést enged, ez is beleszámít).",
+    };
+
+    private async Task FetchNow()
+    {
+        fetchBusy = true;
+        fetchError = null;
+        try
+        {
+            var code = await Sync.RequestBankFetchAsync();
+            if (code is not null) fetchError = code == "no-secret" ? "Előbb kapcsold be a Bank kapcsolatot a Beállításokban." : SyncText.ErrorMessage(code);
+        }
+        finally
+        {
+            fetchBusy = false;
+        }
+    }
 
     private void TogglePaste()
     {

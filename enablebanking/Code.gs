@@ -101,10 +101,59 @@ function lekeresMost() {
 /** A napi 4 időzítés bekapcsolása (a régieket törli). */
 function idozitesBe() {
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'lekeres')
+    .filter(t => ['lekeres', 'keresFigyeles'].indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   ORAK.forEach(h => ScriptApp.newTrigger('lekeres').timeBased().atHour(h).nearMinute(10).everyDays(1).create());
-  return 'Időzítés bekapcsolva: naponta ' + ORAK.join(', ') + ' óra körül (időzóna: ' + Session.getScriptTimeZone() + ').';
+  // A ZsebApp „Lekérés most” gombja: percenként megnézzük, kért-e lekérést az app.
+  ScriptApp.newTrigger('keresFigyeles').timeBased().everyMinutes(1).create();
+  return 'Időzítés bekapcsolva: naponta ' + ORAK.join(', ') + ' óra körül, és percenként figyeli a ZsebApp „Lekérés most” gombját (időzóna: ' +
+    Session.getScriptTimeZone() + ').';
+}
+
+// ---------------------------------------------------------------- a ZsebApp gombja (percenként)
+
+/**
+ * A ZsebApp „Lekérés most” gombja a households/{hid}/ebreq/{titkos kulcs} dokumentumot írja (state = requested).
+ * Ez a függvény percenként fut: ha van kérés, lefuttatja a lekérést, és az eredményt visszaírja (az app kiírja).
+ */
+function keresFigyeles() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('INBOX_URL') || !props.getProperty('SECRET')) return;
+  let url;
+  try {
+    url = keresUrl_();
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return;          // nincs kérés (404) vagy nem elérhető
+    const f = (JSON.parse(res.getContentText()).fields) || {};
+    const state = f.state && f.state.stringValue;
+    const at = f.at && f.at.stringValue ? new Date(f.at.stringValue).getTime() : 0;
+    // Új kérés, vagy egy 5 percnél régebben elakadt.
+    if (!(state === 'requested' || (state === 'running' && Date.now() - at > 5 * 60000))) return;
+    keresAllapot_(url, 'running', 'Lekérés folyamatban…');
+    const r = lekeres();
+    keresAllapot_(url, String(r).indexOf('Hiba') === 0 ? 'error' : 'done', String(r));
+  } catch (err) {
+    try { if (url) keresAllapot_(url, 'error', String(err.message || err)); } catch (e) { }
+  }
+}
+
+function keresUrl_() {
+  const props = PropertiesService.getScriptProperties();
+  return props.getProperty('INBOX_URL').replace('/smsinbox?', '/ebreq/' + encodeURIComponent(props.getProperty('SECRET')) + '?');
+}
+
+function keresAllapot_(url, state, msg) {
+  const mask = ['state', 'msg', 'done'].map(k => '&updateMask.fieldPaths=' + k).join('');
+  UrlFetchApp.fetch(url + mask, {
+    method: 'patch',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ fields: {
+      state: { stringValue: state },
+      msg: { stringValue: msg.slice(0, 400) },
+      done: { stringValue: new Date().toISOString() },
+    } }),
+  });
 }
 
 // ---------------------------------------------------------------- lekérés (időzítve is ez fut)
@@ -385,7 +434,9 @@ function hibaDoboz(s) { return '<p class="err">' + esc_(s) + '</p>'; }
 function oldal_(uzenet) {
   const p = PropertiesService.getScriptProperties().getProperties();
   const kapcsolva = !!p.SESSION_ID;
-  const idozitve = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'lekeres');
+  const triggers = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
+  const idozitve = triggers.indexOf('lekeres') >= 0;
+  const gomb = triggers.indexOf('keresFigyeles') >= 0;
   const sor = (cim, ertek) => '<div class="row"><span>' + cim + '</span><b>' + esc_(ertek) + '</b></div>';
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;padding:16px;color:#123;background:#f3f8fa}
@@ -410,6 +461,7 @@ function oldal_(uzenet) {
     ${sor('ZsebApp beküldés', p.INBOX_URL && p.SECRET ? 'megadva' : 'nincs megadva')}
     ${sor('K&H összekapcsolás', kapcsolva ? 'érvényes eddig: ' + String(p.VALID_UNTIL || '?').slice(0, 10) : 'még nincs')}
     ${sor('Időzítés', idozitve ? 'bekapcsolva (' + ORAK.join(', ') + ' óra)' : 'kikapcsolva')}
+    ${sor('ZsebApp gomb (Lekérés most)', gomb ? 'figyeli (percenként)' : 'nincs bekapcsolva – nyomd meg az Időzítés bekapcsolása gombot')}
     ${sor('Utolsó lekérés', p.LAST_RESULT || '–')}
     ${p.LAST_ERROR ? '<p class="err">' + esc_(p.LAST_ERROR) + '</p>' : ''}
   </div>
@@ -434,7 +486,7 @@ function oldal_(uzenet) {
 
   <h2>3. Automatikus lekérés</h2>
   <div class="card">
-    <p class="note">A bank a háttérben naponta 4 lekérést enged – ezért 4 időpont van. A „Lekérés most” is beleszámít.</p>
+    <p class="note">A bank a háttérben naponta 4 lekérést enged – ezért 4 időpont van. A „Lekérés most” (itt és a ZsebAppban) is beleszámít. Az időzítés bekapcsolása a ZsebApp gombját is bekapcsolja.</p>
     <button onclick="futtat('idozitesBe')">Időzítés bekapcsolása</button>
     <button class="sec" onclick="futtat('lekeresMost')">Lekérés most</button>
   </div>

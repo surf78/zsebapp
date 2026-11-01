@@ -31,6 +31,13 @@ public sealed class SyncState
     public int InboxPending { get; set; }
     /// <summary>Ha a beérkező SMS-ek figyelése hibára futott (pl. a szabályok nincsenek közzétéve).</summary>
     public string? InboxError { get; set; }
+    /// <summary>A „Lekérés most” gomb kérésének állapota: requested | running | done | error (az Apps Script írja).</summary>
+    public string? EbState { get; set; }
+    public string? EbMsg { get; set; }
+    /// <summary>A kérés ideje (ISO).</summary>
+    public string? EbAt { get; set; }
+    /// <summary>Az utolsó állapotváltás ideje (ISO).</summary>
+    public string? EbDone { get; set; }
 
     public bool Connected => Phase == "connected";
 
@@ -139,6 +146,8 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     public string ExportAll() => data.ExportAllJson();
 
     // Mindegyik null-t ad vissza, ha sikerült, különben a hibakódot (lásd SyncText.ErrorMessage).
+    /// <summary>„Lekérés most”: az Apps Script percenként figyeli, és azonnal lekéri a K&amp;H tételeit.</summary>
+    public Task<string?> RequestBankFetchAsync() => Call("zseb.sync.requestBankFetch");
     public Task<string?> SignInAsync(string email, string password) => Call("zseb.sync.signIn", email, password);
     public Task<string?> RegisterAsync(string name, string email, string password) => Call("zseb.sync.register", name, email, password);
     public Task<string?> ResendVerificationAsync() => Call("zseb.sync.resendVerification");
