@@ -372,9 +372,20 @@ z.sync = {
     requestBankFetch: async function () {
         const h = S.household;
         if (!S.hid || !h || !h.smsSecret) return 'no-secret';
+        // A telefon nyilvános IP-címe és böngészője (PSU-fejléc): így a bank felhasználói lekérésnek veszi,
+        // és nem számít bele a napi 4 háttér-lekérésbe. Ha nem sikerül, nélküle megy.
+        let psu = null;
+        try {
+            const ctl = new AbortController();
+            const timer = setTimeout(() => ctl.abort(), 3000);
+            const r = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal, cache: 'no-store' });
+            clearTimeout(timer);
+            const j = await r.json();
+            if (j && j.ip) psu = { ip: String(j.ip), ua: navigator.userAgent };
+        } catch (e) { }
         try {
             await setDoc(doc(S.db, 'households', S.hid, 'ebreq', h.smsSecret),
-                { state: 'requested', at: new Date().toISOString(), by: email(), msg: '', done: '' });
+                { state: 'requested', at: new Date().toISOString(), by: email(), msg: psu ? JSON.stringify({ psu }) : '', done: '' });
             return null;
         } catch (e) { return errCode(e); }
     },

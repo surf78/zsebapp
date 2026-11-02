@@ -93,9 +93,10 @@ function kapcsolatInditas() {
   return r.url;
 }
 
-/** Lekérés azonnal (a weboldal gombja). */
-function lekeresMost() {
-  return lekeres();
+/** Lekérés azonnal (a weboldal gombja). psu = { ip, ua } a böngészőből: így a bank „jelen lévő felhasználós”
+ *  lekérésnek veszi, és nem számít bele a napi 4 háttér-lekérésbe. */
+function lekeresMost(psu) {
+  return lekeres_(psuOk_(psu));
 }
 
 /** A napi 4 időzítés bekapcsolása (a régieket törli). */
@@ -138,8 +139,12 @@ function keresFigyeles() {
     const at = f.at && f.at.stringValue ? new Date(f.at.stringValue).getTime() : 0;
     // Új kérés, vagy egy 5 percnél régebben elakadt.
     if (!(state === 'requested' || (state === 'running' && Date.now() - at > 5 * 60000))) return;
+    // Az app a kéréssel a telefon IP-címét és böngészőjét is küldi (msg = {"psu":{…}}): ezzel a bank
+    // „jelen lévő felhasználós” lekérésnek veszi, és nem számít bele a napi 4 háttér-lekérésbe.
+    let psu = null;
+    try { psu = psuOk_(JSON.parse((f.msg && f.msg.stringValue) || '{}').psu); } catch (e) { }
     keresAllapot_(url, 'running', 'Lekérés folyamatban…');
-    const r = lekeres();
+    const r = lekeres_(psu);
     keresAllapot_(url, String(r).indexOf('Hiba') === 0 ? 'error' : 'done', String(r));
   } catch (err) {
     try { if (url) keresAllapot_(url, 'error', String(err.message || err)); } catch (e) { }
@@ -167,7 +172,20 @@ function keresAllapot_(url, state, msg) {
 
 // ---------------------------------------------------------------- lekérés (időzítve is ez fut)
 
+/** Az időzített (háttér-) lekérés. Az időzítő egy eseményobjektumot ad át – azt nem használjuk. */
 function lekeres() {
+  return lekeres_(null);
+}
+
+let PSU_ = null;   // a futó lekérés PSU-fejlécei (ha a felhasználó indította)
+
+function psuOk_(p) {
+  return p && typeof p.ip === 'string' && /^[0-9a-fA-F:.]{3,45}$/.test(p.ip)
+    ? { ip: p.ip, ua: String(p.ua || '').slice(0, 300) } : null;
+}
+
+function lekeres_(psu) {
+  PSU_ = psu || null;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return 'Egy másik lekérés épp fut.';
   const props = PropertiesService.getScriptProperties();
@@ -183,15 +201,22 @@ function lekeres() {
     let kuldott = 0, osszes = 0;
 
     JSON.parse(props.getProperty('ACCOUNTS')).forEach(acc => {
-      const txs = tranzakciok_(acc.uid, from)
-        .filter(t => !t.status || t.status === 'BOOK')
+      const raw = tranzakciok_(acc.uid, from).filter(t => !t.status || t.status === 'BOOK');
+      const withBal = raw.filter(t => t.balance_after_transaction && t.balance_after_transaction.amount !== undefined)
+        .sort((a, b) => String(b.booking_date || '').localeCompare(String(a.booking_date || '')))[0];
+      const lastBal = withBal ? { amount: String(withBal.balance_after_transaction.amount),
+        currency: withBal.balance_after_transaction.currency || 'HUF', type: 'tétel utáni' } : null;
+      const txs = raw
         .map(t => tetel_(acc, t))
         .filter(t => t)
         .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
       osszes += txs.length;
       const ujak = txs.filter(t => !elkuldve_(t.d, t.k));
-      // Az aktuális egyenleg minden lekérésnél külön megy (a ZsebApp „Felhasználható összeg” kártyája).
-      const bal = egyenleg_(acc.uid);
+      // Az aktuális egyenleg külön üzenetben megy (a ZsebApp „Felhasználható összeg” kártyája).
+      // Háttér-lekérésnél nem kérjük külön (az is a napi 4-be számítana): ilyenkor a legutolsó tétel utáni egyenleg megy, ha van.
+      let bal = null;
+      if (PSU_) bal = egyenleg_(acc.uid);
+      else if (lastBal) bal = lastBal;
       if (bal !== null) egyenlegBekuld_(acc, bal);
       ujak.forEach(t => {
         bekuld_(t);
@@ -201,7 +226,8 @@ function lekeres() {
     });
 
     takarit_();
-    const msg = new Date().toLocaleString('hu-HU') + ': ' + kuldott + ' új tétel beküldve (' + osszes + ' könyvelt tétel ' + from + ' óta).';
+    const msg = new Date().toLocaleString('hu-HU') + ': ' + kuldott + ' új tétel beküldve (' + osszes + ' könyvelt tétel ' + from + ' óta' +
+      (PSU_ ? ', felhasználói lekérés' : ', háttér-lekérés') + ').';
     props.setProperty('LAST_OK', new Date().toISOString());
     props.setProperty('LAST_RESULT', msg);
     props.deleteProperty('LAST_ERROR');
@@ -335,6 +361,11 @@ function api_(method, path, body) {
     muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + jwt_() },
   };
+  if (PSU_) {
+    opt.headers['Psu-Ip-Address'] = PSU_.ip;
+    if (PSU_.ua) opt.headers['Psu-User-Agent'] = PSU_.ua;
+    opt.headers['Psu-Accept-Language'] = 'hu-HU';
+  }
   if (body) {
     opt.contentType = 'application/json';
     opt.payload = JSON.stringify(body);
@@ -547,7 +578,10 @@ function oldal_(uzenet) {
     }
     function futtat(fn) {
       msg('Folyamatban…', true);
-      google.script.run.withSuccessHandler(r => msg(r, !String(r).startsWith('Hiba'))).withFailureHandler(e => msg(e.message, false))[fn]();
+      const run = arg => google.script.run.withSuccessHandler(r => msg(r, !String(r).startsWith('Hiba'))).withFailureHandler(e => msg(e.message, false))[fn](arg);
+      if (fn !== 'lekeresMost') return run();
+      // A böngésző IP-címe a PSU-fejléchez (így nem számít bele a bank napi 4 háttér-lekérésébe).
+      fetch('https://api.ipify.org?format=json').then(r => r.json()).then(j => run({ ip: j.ip, ua: navigator.userAgent })).catch(() => run(null));
     }
   </script>
   </body></html>`;
