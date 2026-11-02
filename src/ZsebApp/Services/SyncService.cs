@@ -108,6 +108,16 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
                 Log(preview, "Üres szöveg érkezett – a Parancsban a „Parancs bemenete” helyett az üzenet tartalmát kell beküldeni.");
                 return true;
             }
+            if (BankEb.IsBalance(text))
+            {
+                if (BankEb.ParseBalance(text) is { } bal)
+                {
+                    await data.SetBankBalanceAsync(bal.Amount, bal.At);
+                    Log("Bank API: egyenleg", $"Egyenleg frissítve: {Fmt.Ft(bal.Amount)}");
+                }
+                else Log(preview, "Hibás egyenleg-üzenet – kihagyva.");
+                return true;
+            }
             if (BankEb.IsEb(text))
             {
                 var tx = BankEb.Parse(text);

@@ -16,6 +16,29 @@ public static class BankEb
     /// <summary>Egy feldolgozott tétel. <see cref="Amount"/> forintban, pozitív; <see cref="Kind"/> a <see cref="BankKinds"/> szerint.</summary>
     public sealed record Tx(string Key, string Kind, long Amount, string Currency, DateTime? Date, string Name, string Remittance, long? Balance);
 
+    /// <summary>Egyenleg-üzenet (minden lekérésnél): <c>EB1B {"b":"17361.00","c":"HUF","t":"ITAV","at":"…"}</c>.</summary>
+    public const string BalancePrefix = "EB1B ";
+
+    public static bool IsBalance(string? text) => text is not null && text.StartsWith(BalancePrefix, StringComparison.Ordinal);
+
+    /// <summary>Az egyenleg (forintra kerekítve) és az időpontja; hibás üzenetnél null.</summary>
+    public static (long Amount, DateTime At)? ParseBalance(string text)
+    {
+        if (!IsBalance(text)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(text[BalancePrefix.Length..]);
+            var r = doc.RootElement;
+            if (Money(r, "b") is not { } b) return null;
+            var at = DateTimeOffset.TryParse(Str(r, "at"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d.LocalDateTime : DateTime.Now;
+            return (b, new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public static bool IsEb(string? text) => text is not null && text.StartsWith(Prefix, StringComparison.Ordinal);
 
     /// <summary>Az <c>EB1 {json}</c> szöveg értelmezése; hibás vagy kulcs/összeg nélküli üzenetnél null.</summary>

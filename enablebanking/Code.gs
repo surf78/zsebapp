@@ -190,10 +190,9 @@ function lekeres() {
         .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
       osszes += txs.length;
       const ujak = txs.filter(t => !elkuldve_(t.d, t.k));
-      if (ujak.length === 0) return;
-      // A legutolsó új tétel kapja a számla aktuális egyenlegét (a ZsebApp ezt mutatja).
+      // Az aktuális egyenleg minden lekérésnél külön megy (a ZsebApp „Felhasználható összeg” kártyája).
       const bal = egyenleg_(acc.uid);
-      if (bal !== null) ujak[ujak.length - 1].b = bal;
+      if (bal !== null) egyenlegBekuld_(acc, bal);
       ujak.forEach(t => {
         bekuld_(t);
         jelol_(t.d, t.k);
@@ -267,18 +266,45 @@ function tranzakciok_(uid, from) {
   return all;
 }
 
+/** A számla egyenlege: { amount, currency, type } vagy null. Az eredményt / hibát a webalkalmazás oldalán is mutatjuk. */
 function egyenleg_(uid) {
+  const props = PropertiesService.getScriptProperties();
+  const stamp = new Date().toLocaleString('hu-HU') + ': ';
   try {
     const r = api_('get', '/accounts/' + encodeURIComponent(uid) + '/balances');
-    const list = r.balances || [];
-    for (const type of ['ITAV', 'CLAV', 'XPCD', 'ITBD', 'CLBD']) {
-      const b = list.find(x => x.balance_type === type);
-      if (b && b.balance_amount) return String(b.balance_amount.amount);
+    const list = (r.balances || []).filter(x => x.balance_amount && x.balance_amount.amount !== undefined);
+    let b = null;
+    for (const type of ['ITAV', 'CLAV', 'XPCD', 'ITBD', 'CLBD', 'OPAV', 'FWAV']) {
+      b = list.find(x => x.balance_type === type);
+      if (b) break;
     }
-    return list.length && list[0].balance_amount ? String(list[0].balance_amount.amount) : null;
+    if (!b) b = list[0] || null;
+    props.setProperty('LAST_BALANCE', stamp + (b
+      ? b.balance_amount.amount + ' ' + (b.balance_amount.currency || '') + ' (' + (b.balance_type || '?') + ')'
+      : 'a bank nem adott egyenleget (' + list.length + ' tétel: ' + (r.balances || []).map(x => x.balance_type).join(', ') + ')'));
+    return b ? { amount: String(b.balance_amount.amount), currency: b.balance_amount.currency || 'HUF', type: b.balance_type || '' } : null;
   } catch (err) {
+    props.setProperty('LAST_BALANCE', stamp + 'hiba: ' + String(err.message || err).slice(0, 300));
     return null;   // az egyenleg nem kötelező
   }
+}
+
+/** Az egyenleg külön üzenetben (minden lekérésnél, akkor is, ha nincs új tétel): EB1B {b, c, t, at}. */
+function egyenlegBekuld_(acc, bal) {
+  const props = PropertiesService.getScriptProperties();
+  const body = { b: bal.amount, c: bal.currency, t: bal.type, at: new Date().toISOString(), i: (acc.iban || '').slice(-4) };
+  const url = props.getProperty('INBOX_URL') + '&documentId=ebbal_' + hash_(acc.uid + '|' + body.at).slice(0, 24);
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ fields: {
+      text: { stringValue: 'EB1B ' + JSON.stringify(body) },
+      secret: { stringValue: props.getProperty('SECRET') },
+      at: { stringValue: body.at },
+    } }),
+  });
+  if (res.getResponseCode() >= 300) throw new Error('A ZsebApp nem fogadta el az egyenleget (' + res.getResponseCode() + ').');
 }
 
 /** Az Enable Banking tranzakcióból a ZsebAppnak küldött rövid tétel. */
@@ -472,6 +498,7 @@ function oldal_(uzenet) {
     ${sor('Időzítés', idozitve ? 'bekapcsolva (' + ORAK.join(', ') + ' óra)' : 'kikapcsolva (csak kézi lekérés)')}
     ${sor('ZsebApp gomb (Lekérés most)', gomb ? 'figyeli (percenként)' : 'nincs bekapcsolva – nyomd meg az Időzítés bekapcsolása gombot')}
     ${sor('Utolsó lekérés', p.LAST_RESULT || '–')}
+    ${sor('Utolsó egyenleg', p.LAST_BALANCE || '–')}
     ${p.LAST_ERROR ? '<p class="err">' + esc_(p.LAST_ERROR) + '</p>' : ''}
   </div>
 

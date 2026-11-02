@@ -565,6 +565,27 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         return entry;
     }
 
+    /// <summary>A bank API egyenlege (minden lekérésnél jön); régebbi üzenet nem írja felül az újabbat.</summary>
+    public async Task SetBankBalanceAsync(long amount, DateTime at)
+    {
+        if (Settings.BankBalanceAt is { } prev && prev > at) return;
+        Settings.BankBalance = amount;
+        Settings.BankBalanceAt = at;
+        await SaveSettingsAsync();
+        Changed?.Invoke();
+    }
+
+    /// <summary>A legfrissebb ismert egyenleg: a bank API-é vagy egy SMS-ben / tételben érkezetté, amelyik újabb.</summary>
+    public (long Amount, DateTime At)? LatestBankBalance()
+    {
+        var e = Bank.Where(b => b.Balance is not null).OrderByDescending(b => b.When).ThenByDescending(b => b.ReceivedAt).FirstOrDefault();
+        (long Amount, DateTime At)? fromEntry = e is null ? null : (e.Balance!.Value, e.DateOnlyKnown ? e.ReceivedAt : e.When);
+        (long Amount, DateTime At)? fromApi = Settings.BankBalance is { } a && Settings.BankBalanceAt is { } t ? (a, t) : null;
+        if (fromApi is null) return fromEntry;
+        if (fromEntry is null) return fromApi;
+        return fromApi.Value.At >= fromEntry.Value.At ? fromApi : fromEntry;
+    }
+
     /// <summary>Ugyanaz a tranzakció lehet: azonos irány és összeg, legfeljebb 4 nap eltérés (a kártyás tételt később könyvelik).</summary>
     private static bool IsNear(BankEntry b, string kind, long amount, DateTime when) =>
         b.Kind == kind && b.Amount == amount && Math.Abs((b.When.Date - when.Date).TotalDays) <= 4;

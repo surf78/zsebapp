@@ -196,6 +196,10 @@ public sealed class AppSettings
 
     /// <summary>Bank napló: partner → saját név párosítások (pl. „Unicredit Bank Hungary Zrt., Budapest” → „PayPal számla”).</summary>
     public List<BankAlias> BankAliases { get; set; } = [];
+
+    /// <summary>A K&amp;H számla legutóbbi egyenlege a bank API-ból (Enable Banking, minden lekérésnél), és mikor kértük le.</summary>
+    public long? BankBalance { get; set; }
+    public DateTime? BankBalanceAt { get; set; }
 }
 
 /// <summary>Mérőóra-leolvasás, pl. Gáz – 12 345,678 m³ – 2026.10.21.</summary>
