@@ -1222,3 +1222,4 @@ a.action { text-decoration: none; }
 .bank-fetch .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .bank-fetch .form-note { margin: 0; font-size: 13.5px; }
 .bank-fetch .form-note.error { color: var(--danger); }
+.bank-today { display: block; margin: -4px auto 10px; padding: 6px 14px; border-radius: 999px; background: var(--glass-strong); font-weight: 700; }

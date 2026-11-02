@@ -36,8 +36,7 @@
     {
         var entries = Data.Bank.OrderByDescending(b => b.When).ThenByDescending(b => b.ReceivedAt).ToList();
         var latest = Data.LatestBankBalance();
-        var month = DateOnly.FromDateTime(DateTime.Today);
-        var inMonth = entries.Where(b => b.When.Year == month.Year && b.When.Month == month.Month).ToList();
+        var inMonth = entries.Where(b => b.When.Year == year && b.When.Month == month).ToList();
 
         @if (latest is { } lb)
         {
@@ -63,21 +62,39 @@
 
         @if (entries.Count > 0)
         {
+            <div class="month-switch">
+                <button class="icon-btn ghost" @onclick="() => ShiftMonth(-1)" aria-label="Előző hónap">
+                    <Icon Name="chevron-left" />
+                </button>
+                <span class="month-title">@Fmt.MonthTitle(year, month)</span>
+                <button class="icon-btn ghost" @onclick="() => ShiftMonth(1)" aria-label="Következő hónap">
+                    <Icon Name="chevron-right" />
+                </button>
+            </div>
+            @if (!IsCurrentMonth)
+            {
+                <button type="button" class="link-btn bank-today" @onclick="GoToday">Ugrás az aktuális hónapra</button>
+            }
+
             <section class="bill-summary">
                 <div class="card bill-total unpaid">
-                    <span class="bill-total-label">Terhelés – @Fmt.MonthName(month.Month)</span>
+                    <span class="bill-total-label">Terhelés – @Fmt.MonthName(month)</span>
                     <span class="bill-total-value">@Fmt.Ft(inMonth.Where(b => b.Kind == BankKinds.Debit).Sum(b => b.Amount))</span>
                     <span class="bill-total-sub">@inMonth.Count(b => b.Kind == BankKinds.Debit) db</span>
                 </div>
                 <div class="card bill-total paid">
-                    <span class="bill-total-label">Jóváírás – @Fmt.MonthName(month.Month)</span>
+                    <span class="bill-total-label">Jóváírás – @Fmt.MonthName(month)</span>
                     <span class="bill-total-value">@Fmt.Ft(inMonth.Where(b => b.Kind == BankKinds.Credit).Sum(b => b.Amount))</span>
                     <span class="bill-total-sub">@inMonth.Count(b => b.Kind == BankKinds.Credit) db</span>
                 </div>
             </section>
 
+            @if (inMonth.Count == 0)
+            {
+                <p class="hint">Ebben a hónapban nincs banki tétel.</p>
+            }
             <ul class="card list bank-list">
-                @foreach (var b in entries)
+                @foreach (var b in inMonth)
                 {
                     var open = openId == b.Id;
                     <li class="row bank-row" @key="b.Id">
@@ -197,6 +214,24 @@
 
 @code {
     private bool loaded;
+    // Alapból mindig az aktuális hónap látszik.
+    private int year = DateTime.Today.Year;
+    private int month = DateTime.Today.Month;
+    private bool IsCurrentMonth => year == DateTime.Today.Year && month == DateTime.Today.Month;
+
+    private void ShiftMonth(int delta)
+    {
+        var d = new DateOnly(year, month, 1).AddMonths(delta);
+        year = d.Year;
+        month = d.Month;
+        openId = null;
+    }
+
+    private void GoToday()
+    {
+        year = DateTime.Today.Year;
+        month = DateTime.Today.Month;
+    }
     private bool showPaste;
     private string pasteText = "";
     private string? pasteError;
