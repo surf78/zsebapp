@@ -575,15 +575,40 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Changed?.Invoke();
     }
 
-    /// <summary>A legfrissebb ismert egyenleg: a bank API-é vagy egy SMS-ben / tételben érkezetté, amelyik újabb.</summary>
-    public (long Amount, DateTime At)? LatestBankBalance()
+    /// <summary>A „Felhasználható összeg” kártya adatai: a legutóbbi valódi egyenleg (SMS, bank API vagy kézi),
+    /// és ha azóta jöttek tételek (bank API / Apple Pay / push), azokkal számolt becslés.</summary>
+    public sealed record BalanceView(long Amount, DateTime At, long BaseAmount, DateTime BaseAt, int LaterCount, bool Estimated);
+
+    public BalanceView? LatestBankBalance()
     {
         var e = Bank.Where(b => b.Balance is not null).OrderByDescending(b => b.When).ThenByDescending(b => b.ReceivedAt).FirstOrDefault();
         (long Amount, DateTime At)? fromEntry = e is null ? null : (e.Balance!.Value, e.DateOnlyKnown ? e.ReceivedAt : e.When);
         (long Amount, DateTime At)? fromApi = Settings.BankBalance is { } a && Settings.BankBalanceAt is { } t ? (a, t) : null;
-        if (fromApi is null) return fromEntry;
-        if (fromEntry is null) return fromApi;
-        return fromApi.Value.At >= fromEntry.Value.At ? fromApi : fromEntry;
+        var anchor = fromApi is null ? fromEntry
+            : fromEntry is null ? fromApi
+            : fromApi.Value.At >= fromEntry.Value.At ? fromApi : fromEntry;
+        if (anchor is not { } an) return null;
+
+        // Későbbi tételek, amelyek még nincsenek benne az egyenlegben: a bank API saját tételei (az SMS-es párjuk már benne
+        // van), amelyek az alap után érkeztek és nem korábbi napra szólnak, és az Apple Pay / push tételek az alap után.
+        var later = Bank.Where(b => b.Balance is null && b != e && (
+                b.Source == BankSources.EnableBanking
+                    ? b.ReceivedAt > an.At && b.When.Date >= an.At.Date
+                    : (b.Source == BankSources.ApplePay || b.Source == BankSources.Push) && b.When > an.At))
+            .ToList();
+        var delta = later.Sum(b => b.Kind == BankKinds.Credit ? b.Amount : b.Kind == BankKinds.Debit ? -b.Amount : 0);
+        var lastAt = later.Count == 0 ? an.At : later.Max(b => b.Source == BankSources.EnableBanking ? b.ReceivedAt : b.When);
+        return new BalanceView(an.Amount + delta, lastAt, an.Amount, an.At, later.Count, later.Count > 0);
+    }
+
+    /// <summary>Kézzel megadott tényleges egyenleg (pl. a mobilbankból): ettől számolunk tovább.</summary>
+    public async Task SetManualBankBalanceAsync(long amount)
+    {
+        var now = DateTime.Now;
+        Settings.BankBalance = amount;
+        Settings.BankBalanceAt = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
+        await SaveSettingsAsync();
+        Changed?.Invoke();
     }
 
     /// <summary>Ugyanaz a tranzakció lehet: azonos irány és összeg, legfeljebb 4 nap eltérés (a kártyás tételt később könyvelik).</summary>

@@ -216,7 +216,7 @@ function lekeres_(psu) {
       // Háttér-lekérésnél nem kérjük külön (az is a napi 4-be számítana): ilyenkor a legutolsó tétel utáni egyenleg megy, ha van.
       let bal = null;
       if (PSU_) bal = egyenleg_(acc.uid);
-      else if (lastBal) bal = lastBal;
+      if (bal === null && lastBal) bal = lastBal;   // a K&H nem mindig ad egyenleget – a tétel utáni egyenleg, ha van
       if (bal !== null) egyenlegBekuld_(acc, bal);
       ujak.forEach(t => {
         bekuld_(t);

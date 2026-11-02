@@ -1223,3 +1223,6 @@ a.action { text-decoration: none; }
 .bank-fetch .form-note { margin: 0; font-size: 13.5px; }
 .bank-fetch .form-note.error { color: var(--danger); }
 .bank-today { display: block; margin: -4px auto 10px; padding: 6px 14px; border-radius: 999px; background: var(--glass-strong); font-weight: 700; }
+.bank-balance .link-like { background: none; border: 0; padding: 0; text-align: left; color: inherit; font-family: inherit; cursor: pointer; }
+.bank-balance-form { display: flex; gap: 8px; align-items: center; }
+.bank-balance-form .input { flex: 1; min-width: 0; }

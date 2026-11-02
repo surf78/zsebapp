@@ -38,13 +38,36 @@
         var latest = Data.LatestBankBalance();
         var inMonth = entries.Where(b => b.When.Year == year && b.When.Month == month).ToList();
 
-        @if (latest is { } lb)
+        @if (latest is { } lb || editBalance)
         {
             <section class="card bank-balance">
-                <span class="bank-balance-label">Felhasználható összeg</span>
-                <span class="bank-balance-value">@Fmt.Ft(lb.Amount)</span>
-                <span class="bank-balance-sub">@Fmt.FullDate(lb.At) @lb.At.ToString("HH:mm") szerint</span>
+                <span class="bank-balance-label">Felhasználható összeg@(latest is { Estimated: true } ? " (becsült)" : "")</span>
+                @if (editBalance)
+                {
+                    <form class="bank-balance-form" @onsubmit="SaveBalance">
+                        <input class="input" inputmode="numeric" placeholder="pl. 17 361" @bind="balanceText" @bind:event="oninput" aria-label="Tényleges egyenleg" />
+                        <button type="submit" class="btn primary">Mentés</button>
+                        <button type="button" class="btn" @onclick="() => editBalance = false">Mégse</button>
+                    </form>
+                    <span class="bank-balance-sub">Írd be a K&amp;H mobilbankban látható felhasználható összeget – innen számolunk tovább.</span>
+                }
+                else if (latest is { } v)
+                {
+                    <button type="button" class="bank-balance-value link-like" @onclick="StartEditBalance" aria-label="Egyenleg megadása">@Fmt.Ft(v.Amount)</button>
+                    @if (v.Estimated)
+                    {
+                        <span class="bank-balance-sub">@Fmt.Ft(v.BaseAmount) (@Fmt.FullDate(v.BaseAt) @v.BaseAt.ToString("HH:mm")) és azóta @v.LaterCount tétel alapján. Koppints az összegre a pontos megadásához.</span>
+                    }
+                    else
+                    {
+                        <span class="bank-balance-sub">@Fmt.FullDate(v.At) @v.At.ToString("HH:mm") szerint</span>
+                    }
+                }
             </section>
+        }
+        else
+        {
+            <button type="button" class="link-btn bank-today" @onclick="StartEditBalance">Egyenleg megadása</button>
         }
 
         @if (Sync.State.Connected && !string.IsNullOrEmpty(Sync.State.SmsSecret))
@@ -304,6 +327,27 @@
         {
             fetchBusy = false;
         }
+    }
+
+    // Kézi egyenleg (a K&H az Enable Bankingen át nem ad egyenleget)
+    private bool editBalance;
+    private string balanceText = "";
+
+    private void StartEditBalance()
+    {
+        balanceText = Data.LatestBankBalance() is { } v ? v.Amount.ToString() : "";
+        editBalance = true;
+    }
+
+    private async Task SaveBalance()
+    {
+        var digits = new string((balanceText ?? "").Where(char.IsDigit).ToArray());
+        if (long.TryParse(digits, out var amount))
+        {
+            var negative = (balanceText ?? "").TrimStart().StartsWith('-') || (balanceText ?? "").TrimStart().StartsWith('−');
+            await Data.SetManualBankBalanceAsync(negative ? -amount : amount);
+        }
+        editBalance = false;
     }
 
     private void TogglePaste()
