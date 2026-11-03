@@ -69,12 +69,15 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine("HIBA: " + ex.Message);
+    // A teljes hibalánc (pl. „An error occurred while sending the request” mögött a valódi ok: DNS, TLS, proxy…).
+    var msg = ex.Message;
+    for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException) msg += " → " + inner.Message;
+    Console.Error.WriteLine("HIBA: " + msg);
     try
     {
         await statusDoc.SetAsync(new Dictionary<string, object?>
         {
-            ["utolsoHiba"] = ex.Message,
+            ["utolsoHiba"] = msg,
             ["utolsoHibaIdo"] = Timestamp.GetCurrentTimestamp(),
         }, SetOptions.MergeAll);
     }
