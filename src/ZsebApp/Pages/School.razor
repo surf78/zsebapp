@@ -1,0 +1,195 @@
+@page "/iskola"
+@implements IDisposable
+@inject SyncService Sync
+
+<PageTitle>Iskola – ZsebApp</PageTitle>
+
+<header class="topbar">
+    <h1>Iskola</h1>
+</header>
+
+<div class="page">
+    @if (!Sync.State.Connected)
+    {
+        <p class="hint">
+            Az iskolai adatok (KRÉTA házi feladatok és jegyek) a közös tárból jönnek –
+            jelentkezz be a <strong>Beállítások → Közös használat</strong> résznél.
+        </p>
+    }
+    else
+    {
+        var st = Sync.Iskola.Status;
+        <p class="school-status">
+            @if (st?.UtolsoSzinkron is { } t)
+            {
+                <span>Utolsó frissítés: @Fmt.Updated(t.ToLocalTime())</span>
+            }
+            else if (Sync.IskolaLoaded)
+            {
+                <span>Még nem futott a KRÉTA-szinkron.</span>
+            }
+            else
+            {
+                <span>Betöltés…</span>
+            }
+        </p>
+        @if (!string.IsNullOrWhiteSpace(st?.UtolsoHiba))
+        {
+            <p class="school-error">
+                A KRÉTA-szinkron hibát jelzett@(st.UtolsoHibaIdo is { } ht ? $" ({Fmt.Updated(ht.ToLocalTime())})" : ""): @st.UtolsoHiba
+            </p>
+        }
+
+        <div class="segmented school-tabs" role="tablist">
+            <button type="button" role="tab" class="seg @(tab == "hazi" ? "selected" : null)" aria-selected="@(tab == "hazi" ? "true" : "false")" @onclick="@(() => tab = "hazi")">
+                Házi feladatok@(NewHazi > 0 ? $" ({NewHazi})" : "")
+            </button>
+            <button type="button" role="tab" class="seg @(tab == "jegyek" ? "selected" : null)" aria-selected="@(tab == "jegyek" ? "true" : "false")" @onclick="@(() => tab = "jegyek")">
+                Jegyek@(NewJegy > 0 ? $" ({NewJegy})" : "")
+            </button>
+        </div>
+
+        @if (tab == "hazi")
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var all = Sync.Iskola.Hazi.Select(h => (h, day: DueDay(h))).ToList();
+            var upcoming = all.Where(x => x.day is null || x.day >= today).OrderBy(x => x.day ?? DateOnly.MaxValue).ToList();
+            var past = all.Where(x => x.day is { } d && d < today).OrderByDescending(x => x.day).ToList();
+
+            @if (all.Count == 0)
+            {
+                <p class="hint">@(Sync.IskolaLoaded ? "Nincs házi feladat az elmúlt két hétből." : "Betöltés…")</p>
+            }
+            <ul class="school-list">
+                @foreach (var (h, day) in upcoming.Concat(past))
+                {
+                    var done = day is { } dd && dd < today;
+                    <li class="card school-card @(h.Olvasott ? null : "unread") @(done ? "past" : null)" @key="h.Id" @onclick="() => MarkReadHazi(h)">
+                        <div class="school-head">
+                            <span class="school-subject">@(h.Tantargy ?? "Házi feladat")</span>
+                            @if (!h.Olvasott)
+                            {
+                                <span class="school-new">ÚJ</span>
+                            }
+                            <span class="school-due @(day == today ? "today" : day == today.AddDays(1) ? "tomorrow" : null)">@DueLabel(day, today)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(h.Szoveg))
+                        {
+                            <div class="school-text">@h.Szoveg</div>
+                        }
+                        <div class="row-sub">
+                            @if (!string.IsNullOrWhiteSpace(h.Tanar))
+                            {
+                                <span>@h.Tanar</span>
+                            }
+                            @if (h.CsatolmanyDb is > 0)
+                            {
+                                <span>· @h.CsatolmanyDb csatolmány (a KRÉTA appban)</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            var jegyek = Sync.Iskola.Jegyek.OrderByDescending(j => j.Datum ?? DateTime.MinValue).ToList();
+            @if (jegyek.Count == 0)
+            {
+                <p class="hint">@(Sync.IskolaLoaded ? "Nincs jegy az elmúlt 45 napból." : "Betöltés…")</p>
+            }
+            <ul class="school-list">
+                @foreach (var j in jegyek)
+                {
+                    <li class="card school-card grade-card @(j.Olvasott ? null : "unread")" @key="j.Id" @onclick="() => MarkReadJegy(j)">
+                        <span class="grade-circle grade-@(j.SzamErtek is >= 1 and <= 5 ? j.SzamErtek : 0)">@GradeText(j)</span>
+                        <div class="grade-main">
+                            <div class="school-head">
+                                <span class="school-subject">@(j.Tantargy ?? "Értékelés")</span>
+                                @if (!j.Olvasott)
+                                {
+                                    <span class="school-new">ÚJ</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(j.Tema))
+                            {
+                                <div class="grade-topic">@j.Tema</div>
+                            }
+                            <div class="row-sub">
+                                @if (j.Datum is { } d)
+                                {
+                                    <span>@Fmt.SmartDate(DateOnly.FromDateTime(d.ToLocalTime()))</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(j.Tipus))
+                                {
+                                    <span>· @j.Tipus</span>
+                                }
+                                @if (j.Suly is { } s && s != 100)
+                                {
+                                    <span>· @s%</span>
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@code {
+    private string tab = "hazi";
+
+    private int NewHazi => Sync.Iskola.Hazi.Count(h => !h.Olvasott);
+    private int NewJegy => Sync.Iskola.Jegyek.Count(j => !j.Olvasott);
+
+    protected override void OnInitialized()
+    {
+        Sync.IskolaChanged += OnChanged;
+        Sync.StateChanged += OnChanged;
+        // Ha csak új jegy van, azzal nyit.
+        if (NewHazi == 0 && NewJegy > 0) tab = "jegyek";
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Sync.IskolaChanged -= OnChanged;
+        Sync.StateChanged -= OnChanged;
+    }
+
+    private static DateOnly? DueDay(IskolaHazi h) =>
+        DateOnly.TryParseExact(h.HataridoNap, "yyyy-MM-dd", out var d) ? d
+        : h.Hatarido is { } t ? DateOnly.FromDateTime(t.ToLocalTime()) : null;
+
+    private static readonly string[] DayNames = ["vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"];
+
+    private static string DueLabel(DateOnly? day, DateOnly today)
+    {
+        if (day is not { } d) return "";
+        if (d == today) return "ma";
+        if (d == today.AddDays(1)) return "holnap";
+        if (d > today && d <= today.AddDays(6)) return DayNames[(int)d.DayOfWeek];
+        if (d < today) return "lejárt: " + Fmt.SmartDate(d);
+        return Fmt.SmartDate(d);
+    }
+
+    private static string GradeText(IskolaJegy j)
+    {
+        if (j.SzamErtek is { } n and >= 1 and <= 5) return n.ToString();
+        var e = j.Ertek ?? "";
+        // Szöveges értékelés (pl. „Kiválóan teljesített”): rövid jel.
+        return e.Length == 0 ? "–" : e.Length <= 3 ? e : e[..1].ToUpperInvariant();
+    }
+
+    private async Task MarkReadHazi(IskolaHazi h)
+    {
+        if (!h.Olvasott) await Sync.MarkIskolaReadAsync("hazi", h.Id);
+    }
+
+    private async Task MarkReadJegy(IskolaJegy j)
+    {
+        if (!j.Olvasott) await Sync.MarkIskolaReadAsync("jegyek", j.Id);
+    }
+}

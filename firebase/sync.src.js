@@ -150,6 +150,29 @@ function connect(hid) {
         processInbox();
     }, err => { console.error('ZsebApp smsinbox', err); S.inboxError = errCode(err); report(); }));
 
+    // Iskola (KRÉTA): a kreta-sync írja, az app csak olvassa (és az „olvasott” mezőt állítja).
+    S.iskola = { hazi: [], jegyek: [], status: null };
+    const iskolaPlain = v => {
+        if (v && typeof v.toDate === 'function') return v.toDate().toISOString();
+        if (Array.isArray(v)) return v.map(iskolaPlain);
+        if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = iskolaPlain(v[k]); return o; }
+        return v;
+    };
+    const iskolaReport = () => {
+        if (!S.dotnet) return;
+        S.dotnet.invokeMethodAsync('OnIskola', JSON.stringify(S.iskola)).catch(() => { });
+    };
+    ['hazi', 'jegyek'].forEach(kind => {
+        S.unsubs.push(onSnapshot(collection(S.db, 'households', hid, 'iskola_' + kind), snap => {
+            S.iskola[kind] = snap.docs.map(d => Object.assign({ id: d.id }, iskolaPlain(d.data())));
+            iskolaReport();
+        }, err => console.error('ZsebApp iskola', kind, err)));
+    });
+    S.unsubs.push(onSnapshot(doc(S.db, 'households', hid, 'iskola_meta', 'status'), snap => {
+        S.iskola.status = snap.exists() ? iskolaPlain(snap.data()) : null;
+        iskolaReport();
+    }, err => console.error('ZsebApp iskola status', err)));
+
     const hRef = doc(S.db, 'households', hid);
     S.unsubs.push(onSnapshot(hRef, snap => {
         if (!snap.exists()) return;
@@ -365,6 +388,13 @@ z.sync = {
     setSmsSecret: async function (secret) {
         if (!S.hid) return 'invalid';
         try { await updateDoc(doc(S.db, 'households', S.hid), { smsSecret: secret || null }); return null; }
+        catch (e) { return errCode(e); }
+    },
+
+    // Iskola: egy házi feladat / jegy olvasottnak jelölése (kind = 'hazi' | 'jegyek').
+    markIskolaRead: async function (kind, id) {
+        if (!S.hid || (kind !== 'hazi' && kind !== 'jegyek')) return 'invalid';
+        try { await updateDoc(doc(S.db, 'households', S.hid, 'iskola_' + kind, id), { olvasott: true }); return null; }
         catch (e) { return errCode(e); }
     },
 

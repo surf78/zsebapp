@@ -293,3 +293,52 @@ public static class Categories
     public static string ColorOf(string name) =>
         All.FirstOrDefault(c => c.Name == name)?.Color ?? "#8e8e93";
 }
+
+/// <summary>Iskola (KRÉTA) – házi feladat. A kreta-sync írja a Firestore-ba (households/{hid}/iskola_hazi), az app csak olvassa.</summary>
+public sealed class IskolaHazi
+{
+    public string Id { get; set; } = "";
+    public string? Tantargy { get; set; }
+    public string? Tanar { get; set; }
+    public string? Szoveg { get; set; }
+    public DateTime? FeladasDatum { get; set; }
+    public DateTime? Hatarido { get; set; }
+    /// <summary>A határidő napja magyar idő szerint ("yyyy-MM-dd").</summary>
+    public string? HataridoNap { get; set; }
+    public int? CsatolmanyDb { get; set; }
+    public DateTime? ElsoLatva { get; set; }
+    public bool Olvasott { get; set; }
+}
+
+/// <summary>Iskola (KRÉTA) – jegy / értékelés (households/{hid}/iskola_jegyek).</summary>
+public sealed class IskolaJegy
+{
+    public string Id { get; set; } = "";
+    public string? Tantargy { get; set; }
+    /// <summary>Pl. "Jeles(5)".</summary>
+    public string? Ertek { get; set; }
+    public int? SzamErtek { get; set; }
+    public int? Suly { get; set; }
+    public string? Tema { get; set; }
+    public string? Tipus { get; set; }
+    public string? Tanar { get; set; }
+    public DateTime? Datum { get; set; }
+    public string? DatumNap { get; set; }
+    public DateTime? ElsoLatva { get; set; }
+    public bool Olvasott { get; set; }
+}
+
+public sealed class IskolaStatus
+{
+    public DateTime? UtolsoSzinkron { get; set; }
+    public string? UtolsoHiba { get; set; }
+    public DateTime? UtolsoHibaIdo { get; set; }
+}
+
+/// <summary>A JS-ből érkező teljes iskolai állapot.</summary>
+public sealed class IskolaData
+{
+    public List<IskolaHazi> Hazi { get; set; } = [];
+    public List<IskolaJegy> Jegyek { get; set; } = [];
+    public IskolaStatus? Status { get; set; }
+}

@@ -65,6 +65,10 @@
             <Icon Name="receipt" />
             <span>Számlák</span>
         </NavLink>
+        <NavLink class="tab" href="iskola">
+            <Icon Name="school" />
+            <span>Iskola</span>
+        </NavLink>
         <NavLink class="tab" href="beallitasok">
             <Icon Name="gear" />
             <span>Beállítások</span>
@@ -74,7 +78,7 @@
 
 @code {
     /// <summary>A fülek sorrendje (húzásos lapozáshoz).</summary>
-    private static readonly string[] Tabs = ["", "jegyzetek", "kiadasok", "szamlak", "beallitasok"];
+    private static readonly string[] Tabs = ["", "jegyzetek", "kiadasok", "szamlak", "iskola", "beallitasok"];
 
     private string? currentPath;
     private string? animClass;

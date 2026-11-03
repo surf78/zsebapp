@@ -151,6 +151,35 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
         StateChanged?.Invoke();
     }
 
+    /// <summary>Iskola (KRÉTA): a kreta-sync által a Firestore-ba írt házi feladatok, jegyek, állapot.</summary>
+    public IskolaData Iskola { get; private set; } = new();
+    public bool IskolaLoaded { get; private set; }
+    public event Action? IskolaChanged;
+
+    [JSInvokable]
+    public void OnIskola(string json)
+    {
+        try
+        {
+            Iskola = JsonSerializer.Deserialize(json, AppJsonContext.Default.IskolaData) ?? new IskolaData();
+        }
+        catch (JsonException)
+        {
+            Iskola = new IskolaData();
+        }
+        IskolaLoaded = true;
+        IskolaChanged?.Invoke();
+    }
+
+    /// <summary>Olvasottnak jelölés (kind = "hazi" | "jegyek"). Azonnal helyben is, a felhő megerősíti.</summary>
+    public async Task<string?> MarkIskolaReadAsync(string kind, string id)
+    {
+        if (kind == "hazi" && Iskola.Hazi.FirstOrDefault(h => h.Id == id) is { } h) h.Olvasott = true;
+        if (kind == "jegyek" && Iskola.Jegyek.FirstOrDefault(j => j.Id == id) is { } j) j.Olvasott = true;
+        IskolaChanged?.Invoke();
+        return await Call("zseb.sync.markIskolaRead", kind, id);
+    }
+
     /// <summary>A közös tár létrehozásakor a telefonon lévő adatok (a JS szinkron hívja).</summary>
     [JSInvokable]
     public string ExportAll() => data.ExportAllJson();

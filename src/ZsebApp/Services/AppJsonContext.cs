@@ -23,4 +23,5 @@ namespace ZsebApp.Services;
 [JsonSerializable(typeof(BankEntry))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(SyncState))]
+[JsonSerializable(typeof(IskolaData))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

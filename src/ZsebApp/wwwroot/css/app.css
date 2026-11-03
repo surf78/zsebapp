@@ -1226,3 +1226,29 @@ a.action { text-decoration: none; }
 .bank-balance .link-like { background: none; border: 0; padding: 0; text-align: left; color: inherit; font-family: inherit; cursor: pointer; }
 .bank-balance-form { display: flex; gap: 8px; align-items: center; }
 .bank-balance-form .input { flex: 1; min-width: 0; }
+
+/* ---------- Iskola (KRÉTA) ---------- */
+.school-status { margin: 0 4px 8px; font-size: 13px; color: var(--muted); }
+.school-error { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: rgba(200, 16, 46, 0.12); color: var(--danger); font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.school-tabs { margin-bottom: 12px; background: var(--glass); }
+.school-tabs .seg.selected { background: var(--ocean); color: #fff; box-shadow: var(--ocean-shadow); }
+.school-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.school-card { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.school-card.unread { border-left: 4px solid var(--accent); }
+.school-card.past { opacity: 0.55; }
+.school-head { display: flex; align-items: center; gap: 8px; }
+.school-subject { font-weight: 800; font-size: 16px; flex: 1; min-width: 0; }
+.school-new { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; }
+.school-due { flex: none; font-size: 13px; font-weight: 700; color: var(--muted); }
+.school-due.today { color: var(--danger); }
+.school-due.tomorrow { color: #c76a00; }
+.school-text { white-space: pre-line; font-size: 14.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.grade-card { flex-direction: row; align-items: center; gap: 12px; }
+.grade-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.grade-topic { font-size: 14px; overflow-wrap: anywhere; }
+.grade-circle { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; font-weight: 800; color: #fff; background: #8a9aa6; }
+.grade-circle.grade-5 { background: #1a9a4b; }
+.grade-circle.grade-4 { background: #6cc04a; }
+.grade-circle.grade-3 { background: #e7b416; }
+.grade-circle.grade-2 { background: #ef7d1a; }
+.grade-circle.grade-1 { background: #d9302c; }

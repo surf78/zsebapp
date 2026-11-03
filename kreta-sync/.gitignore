@@ -1,0 +1,7 @@
+bin/
+obj/
+*.user
+.vs/
+# Service account kulcs – SOHA ne kerüljön a repóba!
+sa.json
+*-firebase-adminsdk-*.json

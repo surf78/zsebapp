@@ -25,6 +25,11 @@ service cloud.firestore {
       allow delete: if signedIn() && (mail == myEmail() || isMember(resource.data.hid));
     }
 
+    // A KRÉTA refresh token (kreta-sync): kliensről soha nem olvasható / írható.
+    match /kreta_private/{doc} {
+      allow read, write: if false;
+    }
+
     match /households/{hid} {
       allow read: if signedIn() && myEmail() in resource.data.memberEmails;
       allow create: if signedIn()
@@ -51,6 +56,22 @@ service cloud.firestore {
           && request.resource.data.secret.size() >= 16
           && request.resource.data.secret == get(/databases/$(database)/documents/households/$(hid)).data.smsSecret;
         allow read, delete: if isMember(hid);
+      }
+
+      // Iskola (KRÉTA): a kreta-sync (GitHub Actions, service account – a szabályokat megkerüli) írja.
+      // A tagok olvashatják, és csak az „olvasott” mezőt módosíthatják.
+      match /iskola_hazi/{id} {
+        allow read: if isMember(hid);
+        allow update: if isMember(hid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['olvasott']);
+      }
+      match /iskola_jegyek/{id} {
+        allow read: if isMember(hid);
+        allow update: if isMember(hid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['olvasott']);
+      }
+      match /iskola_meta/{id} {
+        allow read: if isMember(hid);
       }
 
       // „Lekérés most” gomb (Enable Banking, Google Apps Script). A dokumentum azonosítója = a háztartás titkos kulcsa:
