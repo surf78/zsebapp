@@ -1,0 +1,41 @@
+# kreta-sync futtatása otthoni NAS-on (pl. Asustor: Docker Engine + Portainer → Stacks → Add stack).
+# A NAS Magyarországon van, onnan a KRÉTA elérhető (a GitHub külföldi szervereit a KRÉTA nem engedi).
+#
+# Előkészítés a NAS-on (Fájlkezelő / File Explorer):
+#   /volume1/Docker/kreta-sync/KretaSync/   ← a repó kreta-sync/KretaSync mappájának tartalma (Program.cs, KretaSync.csproj)
+#   /volume1/Docker/kreta-sync/sa.json      ← a Firebase service account kulcs (zsebapp-firebase-adminsdk-….json átnevezve)
+#
+# Indulás után egyszer lefordítja a programot, majd 6 és 21 óra között félóránként lefuttatja a szinkront.
+# Napló: Portainer → Containers → kreta-sync → Logs.
+
+services:
+  kreta-sync:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    container_name: kreta-sync
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Budapest
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/sa.json
+      FIREBASE_PROJECT_ID: zsebapp
+      ZSEB_HOUSEHOLD: QApBpD8OjydvIeiIdFgG
+      KRETA_INSTITUTE: klik034954001
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    volumes:
+      - /volume1/Docker/kreta-sync/KretaSync:/src:ro
+      - /volume1/Docker/kreta-sync/sa.json:/secrets/sa.json:ro
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "Fordítás..."
+        dotnet publish /src/KretaSync.csproj -c Release -o /app --nologo -v q
+        echo "Kész. Szinkron 6–21 óra között félóránként."
+        while true; do
+          H=$$(date +%H)
+          if [ "$$H" -ge 6 ] && [ "$$H" -lt 21 ]; then
+            echo "$$(date '+%Y-%m-%d %H:%M') szinkron"
+            dotnet /app/KretaSync.dll sync || echo "$$(date '+%Y-%m-%d %H:%M') HIBA (a részletek fent)"
+          fi
+          sleep 1800
+        done

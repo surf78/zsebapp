@@ -60,6 +60,20 @@ Majd Actions fül → **Kréta szinkron** → *Run workflow*, hogy kipróbáld.
 A `firebase/firestore.rules` már tartalmazza az iskolai részt (`iskola_*` olvasás a tagoknak, csak az `olvasott` mező írható;
 `kreta_private` senkinek). A konzolban (Firestore → Rules) közzé kell tenni.
 
+## Futtatás otthoni NAS-on (Asustor) – ajánlott
+
+A GitHub Actions szerverei külföldön vannak, és a KRÉTA nem válaszol nekik (60 mp-es időtúllépés). Ezért a szinkron
+az otthoni NAS-on fut, Dockerben:
+
+1. **App Central** → telepítsd: **Docker Engine** és **Portainer CE**.
+2. A NAS **Docker** megosztásában hozd létre: `kreta-sync/KretaSync/` (ide a repó `kreta-sync/KretaSync` mappájának
+   `Program.cs` és `KretaSync.csproj` fájlja), és `kreta-sync/sa.json` (a Firebase kulcs, átnevezve).
+3. **Portainer** → *Stacks* → *Add stack* → név: `kreta-sync` → a `docker-compose.yml` tartalmát másold be → *Deploy the stack*.
+4. *Containers* → `kreta-sync` → *Logs*: pár perc múlva `OK – házi feladat: …` sort kell látnod.
+5. A GitHub-os munkafolyamatot kapcsold ki (Actions → Kréta szinkron → ⋯ → *Disable workflow*).
+
+Programfrissítéskor: másold át az új `Program.cs`-t, majd Portainerben a konténer *Restart*.
+
 ## Ha eltörik
 - **Sikertelen futásról a GitHub e-mailt küld**, a ZsebApp Iskola fülén pedig piros sáv jelenik meg.
 - `A mentett token lejárt…` → futtasd újra helyben a 3. lépést (`dotnet run -- login`).
