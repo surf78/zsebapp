@@ -51,7 +51,7 @@ var tokenDoc = db.Collection("kreta_private").Document("token");
 var household = db.Collection("households").Document(householdId);
 var statusDoc = household.Collection("iskola_meta").Document("status");
 
-using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", userAgent);
 
 var command = args.Length > 0 ? args[0] : "sync";
@@ -214,12 +214,22 @@ async Task LoginPassword()
     Console.WriteLine("Kész! A refresh token elmentve a Firestore-ba. Próba: dotnet run -- sync");
 }
 
+// Hálózati hibánál a cím is bekerül az üzenetbe (pl. ha a KRÉTA nem engedi a külföldi szervereket).
+async Task<HttpResponseMessage> Send(HttpRequestMessage req)
+{
+    try { return await http.SendAsync(req); }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        throw new Exception($"Nem érhető el: {req.RequestUri?.Host} ({ex.GetType().Name})", ex);
+    }
+}
+
 async Task<JsonElement> PostToken(Dictionary<string, string> form)
 {
     using var req = new HttpRequestMessage(HttpMethod.Post, TokenUrl) { Content = new FormUrlEncodedContent(form) };
     req.Headers.TryAddWithoutValidation("User-Agent", TokenUserAgent);
     req.Headers.TryAddWithoutValidation("Accept", "*/*");
-    using var resp = await http.SendAsync(req);
+    using var resp = await Send(req);
     var body = await resp.Content.ReadAsStringAsync();
     if (!resp.IsSuccessStatusCode)
     {
@@ -294,7 +304,7 @@ async Task<List<JsonElement>> GetArray(string accessToken, string url)
 {
     using var req = new HttpRequestMessage(HttpMethod.Get, url);
     req.Headers.Authorization = new("Bearer", accessToken);
-    using var resp = await http.SendAsync(req);
+    using var resp = await Send(req);
     var body = await resp.Content.ReadAsStringAsync();
     if (!resp.IsSuccessStatusCode)
         throw new Exception($"Lekérés sikertelen ({(int)resp.StatusCode}) {url}: {Truncate(body, 300)}");
