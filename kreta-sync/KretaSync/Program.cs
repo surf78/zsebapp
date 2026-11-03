@@ -1,7 +1,8 @@
 // KretaSync – Kréta házi feladatok és jegyek szinkronizálása Firestore-ba (ZsebApp "Iskola" oldalhoz).
 //
 // Parancsok:
-//   login           – egyszeri böngészős bejelentkezés (OAuth2 + PKCE, mint a hivatalos iOS app);
+//   login           – egyszeri böngészős bejelentkezés (OAuth2 + PKCE, mint a hivatalos iOS app): kiírja / megnyitja a címet
+//   login-finish U  – a bejelentkezés vége: U = a böngésző végső (…?code=…) címe, pl. login-finish (Get-Clipboard);
 //                     a refresh tokent a Firestore-ba menti (kreta_private/token)
 //   login-password  – tartalék: felhasználónév + jelszó (régi password grant, ha a KRÉTA még engedi)
 //   sync            – (alapértelmezett) lekérés + Firestore frissítés; ezt futtatja a GitHub Actions
@@ -32,6 +33,8 @@ const string RedirectUri = "https://mobil.e-kreta.hu/ellenorzo-student/prod/oaut
 const string Scope = "openid email offline_access kreta-ellenorzo-webapi.public kreta-eugyintezes-webapi.public " +
                      "kreta-fileservice-webapi.public kreta-mobile-global-webapi.public kreta-dkt-webapi.public kreta-ier-webapi.public";
 
+try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+
 var projectId = Env("FIREBASE_PROJECT_ID");
 var institute = Env("KRETA_INSTITUTE").Trim().ToLowerInvariant();
 var userAgent = Environment.GetEnvironmentVariable("KRETA_USER_AGENT") ?? "hu.ekreta.student/1.0.5/Android/0/0";
@@ -53,11 +56,13 @@ try
 {
     switch (command)
     {
-        case "login": await LoginBrowser(); break;
+        case "login": LoginStart(); break;
+        case "login-finish": await LoginFinish(string.Join(" ", args.Skip(1))); break;
+        case "login-interactive": await LoginBrowser(); break;
         case "login-password": await LoginPassword(); break;
         case "sync": await Sync(); break;
         default:
-            Console.WriteLine("Használat: dotnet run -- [login | login-password | sync]");
+            Console.WriteLine("Használat: dotnet run -- [login | login-finish <cím> | login-password | sync]");
             return 2;
     }
     return 0;
@@ -78,6 +83,63 @@ catch (Exception ex)
 }
 
 // ───────────────────────── Bejelentkezés ─────────────────────────
+
+// Kétlépéses bejelentkezés (a konzolba beillesztés nélkül): a PKCE adatokat egy helyi fájlba tesszük.
+string PendingFile() => Path.Combine(Path.GetTempPath(), "kreta-login-pending.json");
+
+void LoginStart()
+{
+    var verifier = B64Url(RandomNumberGenerator.GetBytes(32));
+    var challenge = B64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+    var state = B64Url(RandomNumberGenerator.GetBytes(16));
+    var nonce = B64Url(RandomNumberGenerator.GetBytes(16));
+    File.WriteAllText(PendingFile(), JsonSerializer.Serialize(new Dictionary<string, string> { ["verifier"] = verifier, ["state"] = state }));
+
+    var url = Idp + "/connect/authorize?" + BuildQuery(new()
+    {
+        ["client_id"] = IosClientId,
+        ["response_type"] = "code",
+        ["redirect_uri"] = RedirectUri,
+        ["scope"] = Scope,
+        ["code_challenge"] = challenge,
+        ["code_challenge_method"] = "S256",
+        ["state"] = state,
+        ["nonce"] = nonce,
+        ["prompt"] = "login",
+    });
+
+    Console.WriteLine("1) Megnyitom a böngészőt a KRÉTA bejelentkezéshez. Ha nem nyílik meg, másold be ezt a címet:");
+    Console.WriteLine(url);
+    try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    Console.WriteLine();
+    Console.WriteLine("2) Jelentkezz be a gondviselői fiókoddal. A végén a böngésző egy mobil.e-kreta.hu/...?code=... címre ugrik");
+    Console.WriteLine("   (lehet, hogy hibaoldalt mutat, az nem baj). Másold ki a TELJES címet a címsorból (Ctrl+A, Ctrl+C).");
+    Console.WriteLine("3) Utána ebben az ablakban futtasd (a vágólapról olvassa a címet):");
+    Console.WriteLine("   dotnet run -- login-finish (Get-Clipboard)");
+}
+
+async Task LoginFinish(string pasted)
+{
+    if (!File.Exists(PendingFile())) throw new Exception("Előbb futtasd: dotnet run -- login");
+    var pending = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(PendingFile()))!;
+    var q = ParseQuery(pasted.Trim());
+    if (!q.TryGetValue("code", out var code))
+        throw new Exception("Nem találtam 'code' paramétert a címben. A böngésző VÉGSŐ (…oauthredirect?code=…) címét másold ki, majd: dotnet run -- login-finish (Get-Clipboard)");
+    if (q.TryGetValue("state", out var st) && st != pending["state"])
+        throw new Exception("A 'state' nem egyezik – futtasd újra: dotnet run -- login");
+
+    var tok = await PostToken(new()
+    {
+        ["grant_type"] = "authorization_code",
+        ["code"] = code,
+        ["redirect_uri"] = RedirectUri,
+        ["client_id"] = IosClientId,
+        ["code_verifier"] = pending["verifier"],
+    });
+    await SaveToken(tok, IosClientId);
+    File.Delete(PendingFile());
+    Console.WriteLine("Kész! A refresh token elmentve a Firestore-ba. Próba: dotnet run -- sync");
+}
 
 async Task LoginBrowser()
 {
