@@ -30,6 +30,9 @@ const string TokenUrl = Idp + "/connect/token";
 const string IosClientId = "kreta-ellenorzo-student-mobile-ios";
 const string AndroidClientId = "kreta-ellenorzo-mobile-android";
 const string RedirectUri = "https://mobil.e-kreta.hu/ellenorzo-student/prod/oauthredirect";
+// A token-végpont a nem az iOS appnak látszó kéréseknél bontja a kapcsolatot („forcibly closed”) –
+// ugyanaz a User-Agent kell, mint a hivatalos iOS appé (kreta-tui alapján).
+const string TokenUserAgent = "eKretaStudent/264745 CFNetwork/1494.0.7 Darwin/23.4.0";
 const string Scope = "openid email offline_access kreta-ellenorzo-webapi.public kreta-eugyintezes-webapi.public " +
                      "kreta-fileservice-webapi.public kreta-mobile-global-webapi.public kreta-dkt-webapi.public kreta-ier-webapi.public";
 
@@ -213,7 +216,10 @@ async Task LoginPassword()
 
 async Task<JsonElement> PostToken(Dictionary<string, string> form)
 {
-    using var resp = await http.PostAsync(TokenUrl, new FormUrlEncodedContent(form));
+    using var req = new HttpRequestMessage(HttpMethod.Post, TokenUrl) { Content = new FormUrlEncodedContent(form) };
+    req.Headers.TryAddWithoutValidation("User-Agent", TokenUserAgent);
+    req.Headers.TryAddWithoutValidation("Accept", "*/*");
+    using var resp = await http.SendAsync(req);
     var body = await resp.Content.ReadAsStringAsync();
     if (!resp.IsSuccessStatusCode)
     {
@@ -250,6 +256,7 @@ async Task<string> GetAccessToken()
         ["refresh_token"] = snap.GetValue<string>("refreshToken"),
         ["client_id"] = clientId,
         ["institute_code"] = institute,
+        ["refresh_user_data"] = "false",
     });
     // A refresh token egyszer használatos lehet: az újat AZONNAL elmentjük.
     if (tok.TryGetProperty("refresh_token", out _))
