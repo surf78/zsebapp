@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Ha a gépen csak újabb .NET van (pl. a Visual Studióval jött .NET 10), azon is fusson. -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
