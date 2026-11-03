@@ -1,0 +1,35 @@
+name: Kréta szinkron
+
+on:
+  schedule:
+    # 30 percenként, kb. 6:00–21:00 magyar idő szerint (UTC 5–19)
+    - cron: '*/30 5-19 * * *'
+  workflow_dispatch: {}   # kézi indítás az Actions fülről
+
+concurrency:
+  group: kreta-sync
+  cancel-in-progress: false   # két futás ne frissítse egyszerre a tokent
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Service account fájl
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
+        run: printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+
+      - name: Szinkron
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          FIREBASE_PROJECT_ID: zsebapp
+          ZSEB_HOUSEHOLD: ${{ secrets.ZSEB_HOUSEHOLD }}
+          KRETA_INSTITUTE: ${{ secrets.KRETA_INSTITUTE }}
+        run: dotnet run -c Release --project kreta-sync/KretaSync -- sync
