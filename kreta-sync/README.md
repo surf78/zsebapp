@@ -34,7 +34,11 @@ dotnet run -- login
 
 Megnyílik a KRÉTA bejelentkezés. Lépj be a gondviselői fiókkal. A végén a böngésző egy
 `mobil.e-kreta.hu/...?code=...` címre ugrik (lehet, hogy hibaoldalt mutat, az nem baj).
-Másold ki a teljes címet a címsorból, és illeszd be a konzolba.
+Másold ki a teljes címet a címsorból (Ctrl+A, Ctrl+C), majd ugyanabban a PowerShell-ablakban:
+
+```powershell
+dotnet run -- login-finish (Get-Clipboard)
+```
 Ha a böngésző nem marad azon a címen: F12 → Network fül, ott látszik a `?code=`-os kérés.
 
 Utána próba: `dotnet run -- sync` → ha kiírja, hogy `OK – házi feladat: …`, a ZsebApp Iskola fülén megjelennek az adatok.
