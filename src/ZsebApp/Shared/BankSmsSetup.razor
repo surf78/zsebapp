@@ -70,18 +70,18 @@
                 később lekéri ugyanezt a tételt, csak összekapcsolja – nem lesz dupla kiadás.
             </p>
             <ol class="bank-steps">
-                <li><strong>Parancsok</strong> → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Tárca</strong> (Tranzakció).
-                    Kártya: a <em>K&amp;H kártyád</em>; kategória: mind. Kapcsold be: <strong>Azonnali futtatás</strong> → Tovább → <strong>Új üres parancs</strong>.</li>
-                <li>Művelet: <strong>Szöveg</strong>. Három sor legyen benne:
+                <li><strong>Parancsok</strong> → <strong>Automatizálás</strong> → <strong>+</strong> → <strong>Értesítés</strong> (iOS 27-től) → App: <strong>Tárca</strong>;
+                    szűrő: az üzenet tartalmazza <code>Ft</code>. Az <strong>Automatizálás</strong> legyen bekapcsolva, az Értesítés kikapcsolva.
+                    (A Tárca „Tranzakció” automatizálás nem adja át az összeget, ezért a Tárca értesítését használjuk: „K&amp;H Bank / Roni ABC / 2519 Ft”.)</li>
+                <li>Művelet: <strong>Szöveg</strong>. Négy sor:
                     <ul>
                         <li>1. sor: <code>@BankQuick.ApplePayPrefix</code></li>
-                        <li>2. sor: változó <strong>Parancsbemenet</strong> → koppints rá → <strong>Összeg</strong></li>
-                        <li>3. sor: változó <strong>Parancsbemenet</strong> → koppints rá → <strong>Kereskedő</strong></li>
+                        <li>2–4. sor: az <strong>Értesítés</strong> változó <strong>Cím</strong>, <strong>Alcím</strong> és <strong>Szövegtörzs</strong> tulajdonsága</li>
                     </ul>
                 </li>
                 <li>Művelet: <strong>URL tartalmának lekérése</strong> – ugyanúgy, mint az SMS-nél (lent): a fenti cím, POST, JSON,
                     <code>fields</code> → <code>text</code> = a <strong>Szöveg</strong>, <code>secret</code> = a kulcs,
-                    <code>at</code> = <strong>Jelenlegi dátum</strong> (ISO 8601) – ez itt fontos, ebből lesz a fizetés időpontja.</li>
+                    <code>at</code> = <strong>Jelenlegi dátum</strong> (ISO 8601).</li>
                 <li>Kipróbálni csak valódi fizetéssel lehet (a lejátszás gomb nem ad tranzakciót). A Bank naplóban „Apple Pay” jelöléssel jelenik meg.</li>
             </ol>
         </details>

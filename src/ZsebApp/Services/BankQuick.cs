@@ -37,17 +37,30 @@ public static partial class BankQuick
     {
         var lines = body.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (lines.Length == 0) return null;
-        var amountLine = lines.FirstOrDefault(l => Regex.IsMatch(l, @"\d")) ?? "";
+        // Az összeg sora: elsősorban a pénznemes („2519 Ft”, „HUF 2,000.00”, „12,99 €”), különben az első számos sor.
+        // (A kereskedő nevében is lehet szám, pl. „LIDL HU 181”, ezért a pénznemes sor az elsődleges.)
+        var amountLine = lines.FirstOrDefault(l => CurrencyRegex().IsMatch(l))
+            ?? lines.FirstOrDefault(l => Regex.IsMatch(l, @"^[+\-−]?\s*\d[\d\s\u00A0\u202F.,']*$"))
+            ?? lines.FirstOrDefault(l => Regex.IsMatch(l, @"\d")) ?? "";
         var amount = LenientAmount(amountLine);
         if (amount is null or 0) return null;
-        var rest = lines.Where(l => l != amountLine).ToList();
-        var merchant = rest.FirstOrDefault() ?? "";
-        if (merchant.Length == 0 && rest.Count > 1) merchant = rest[1];
-        var negative = amount < 0;
+        // Kereskedő: az összeg előtti utolsó nem-összeg sor (a Tárca értesítésében: „K&H Bank” / „Roni ABC” / „2519 Ft”),
+        // ha ilyen nincs, az utána következő első.
+        var idx = Array.IndexOf(lines, amountLine);
+        var merchant = lines.Take(idx).LastOrDefault(l => !IsCardName(l)) ?? lines.Take(idx).LastOrDefault()
+            ?? lines.Skip(idx + 1).FirstOrDefault() ?? "";
         // Az Apple Pay fizetés terhelés; ha visszatérítésként pozitív előjellel jön („+”), jóváírás.
-        var kind = amountLine.TrimStart().StartsWith('+') ? BankKinds.Credit : BankKinds.Debit;
+        var kind = amountLine.TrimStart().StartsWith('+') || Regex.IsMatch(BankSms.Plain(body), @"visszaterit|jovair")
+            ? BankKinds.Credit : BankKinds.Debit;
         return new BankSms.Parsed(kind, Math.Abs(amount.Value), null, null, Tidy(merchant));
     }
+
+    /// <summary>A Tárca értesítés címe a kártya neve (pl. „K&amp;H Bank”, „Mastercard betéti kártya”) – ez nem kereskedő.</summary>
+    private static bool IsCardName(string line) =>
+        Regex.IsMatch(BankSms.Plain(line), @"^(k\s*&\s*h|kh)\b|\bbank$|mastercard|\bvisa\b|kartya|apple pay|tarca");
+
+    [GeneratedRegex(@"\d.*(Ft|HUF|EUR|€|\$|£)|(Ft|HUF|EUR|€|\$|£)\s*\d", RegexOptions.IgnoreCase)]
+    private static partial Regex CurrencyRegex();
 
     /// <summary>
     /// Összeg bármilyen formában: „2 000 Ft”, „2 000,50 Ft”, „HUF 2,000.00”, „Ft 2.000”, „-2000”.
