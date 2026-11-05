@@ -527,11 +527,63 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
     public async Task<BankEntry?> AddBankEbAsync(string text, DateTime? receivedAt = null)
     {
         if (BankEb.Parse(text) is not { } t || t.Amount <= 0) return null;
+        var at = receivedAt ?? DateTime.Now;
+        var when = t.Date ?? at;
+
+        if (t.Pending)
+        {
+            // Függő tétel: ha már megvan (függőként, vagy könyvelve / SMS-ből / Apple Pay-ből), nem kerül be újra.
+            if (Bank.FirstOrDefault(b => b.PendingRef == t.Key || b.Ref == t.Key) is { } known) return known;
+            var ptwin = Bank
+                .Where(b => b.Ref is null && b.PendingRef is null && (b.Source != BankSources.EnableBanking) && IsNear(b, t.Kind, t.Amount, when))
+                .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
+                .FirstOrDefault();
+            if (ptwin is not null)
+            {
+                ptwin.PendingRef = t.Key;
+                await SaveBankAsync();
+                Changed?.Invoke();
+                return ptwin;
+            }
+            // Ha a könyvelt párja már megjött (ritka sorrend), az már tartalmazza.
+            if (Bank.Any(b => b.Source == BankSources.EnableBanking && !b.Pending && b.PendingRef is null
+                              && IsNear(b, t.Kind, t.Amount, when) && b.ReceivedAt >= at.AddDays(-1)))
+                return null;
+            var pentry = NewEbEntry(BankSms.StableGuid("ebp:" + t.Key), t, at);
+            pentry.Ref = null;
+            pentry.PendingRef = t.Key;
+            pentry.Pending = true;
+            await AttachExpenseAsync(pentry, t.Name + " " + t.Remittance);
+            Bank.Add(pentry);
+            await SaveBankAsync();
+            Changed?.Invoke();
+            return pentry;
+        }
+
         var id = BankSms.StableGuid("eb:" + t.Key);
         if (Bank.FirstOrDefault(b => b.Id == id || b.Ref == t.Key) is { } existing) return existing;
 
-        var at = receivedAt ?? DateTime.Now;
-        var when = t.Date ?? at;
+        // Könyvelt tétel: ha volt hozzá függő, az lesz könyvelt (nem lesz dupla kiadás).
+        var pending = Bank
+            .Where(b => b.PendingRef is not null && b.Ref is null && IsNear(b, t.Kind, t.Amount, when))
+            .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
+            .FirstOrDefault();
+        if (pending is not null)
+        {
+            pending.Ref = t.Key;
+            pending.Pending = false;
+            if (pending.Source == BankSources.EnableBanking)
+            {
+                pending.TransactionAt = t.Date ?? pending.TransactionAt;
+                pending.Text = BankEb.Describe(t);
+                if (t.Name.Length > 0) pending.Merchant = t.Name;
+            }
+            pending.Balance ??= t.Balance;
+            await SaveBankAsync();
+            Changed?.Invoke();
+            return pending;
+        }
+
         var twin = Bank
             .Where(b => b.Source != BankSources.EnableBanking && b.Ref is null && IsNear(b, t.Kind, t.Amount, when))
             .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
@@ -545,24 +597,52 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
             return twin;
         }
 
-        var entry = new BankEntry
-        {
-            Id = id,
-            Source = BankSources.EnableBanking,
-            Ref = t.Key,
-            ReceivedAt = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second),
-            TransactionAt = t.Date,
-            Kind = t.Kind,
-            Amount = t.Amount,
-            Balance = t.Balance,
-            Merchant = t.Name.Length > 0 ? t.Name : t.Remittance.Length > 60 ? t.Remittance[..60].TrimEnd() : t.Remittance,
-            Text = BankEb.Describe(t),
-        };
+        var entry = NewEbEntry(id, t, at);
         await AttachExpenseAsync(entry, t.Name + " " + t.Remittance);
         Bank.Add(entry);
         await SaveBankAsync();
         Changed?.Invoke();
         return entry;
+    }
+
+    private static BankEntry NewEbEntry(Guid id, BankEb.Tx t, DateTime at) => new()
+    {
+        Id = id,
+        Source = BankSources.EnableBanking,
+        Ref = t.Key,
+        ReceivedAt = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, at.Second),
+        TransactionAt = t.Date,
+        Kind = t.Kind,
+        Amount = t.Amount,
+        Balance = t.Balance,
+        Merchant = t.Name.Length > 0 ? t.Name : t.Remittance.Length > 60 ? t.Remittance[..60].TrimEnd() : t.Remittance,
+        Text = BankEb.Describe(t),
+    };
+
+    /// <summary>
+    /// A bank szerint jelenleg függő tételek: a függőként felvett, de már nem függő és nem is könyvelt bank API tételt
+    /// (visszavont kártyás zárolás) a kiadásával együtt töröljük; más forrású tételnél csak a függő-kapcsolatot bontjuk.
+    /// </summary>
+    public async Task<int> ApplyPendingListAsync(IReadOnlyCollection<string> keys, DateTime at)
+    {
+        var gone = Bank.Where(b => b.Pending && b.PendingRef is { } k && !keys.Contains(k) && b.ReceivedAt < at).ToList();
+        var removed = 0;
+        foreach (var b in gone)
+        {
+            if (b.Source == BankSources.EnableBanking)
+            {
+                await DeleteBankEntryAsync(b, withExpense: true);
+                removed++;
+            }
+            else
+            {
+                b.PendingRef = null;
+                b.Pending = false;
+            }
+        }
+        if (gone.Count > removed) await SaveBankAsync();
+        if (gone.Count > 0) Changed?.Invoke();
+        return removed;
     }
 
     /// <summary>A bank API egyenlege (minden lekérésnél jön); régebbi üzenet nem írja felül az újabbat.</summary>

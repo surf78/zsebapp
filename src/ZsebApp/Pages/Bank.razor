@@ -134,6 +134,10 @@
                                 {
                                     <span>· @BankSources.Label(b.Source)</span>
                                 }
+                                @if (b.Pending)
+                                {
+                                    <span class="bank-pending">· függőben</span>
+                                }
                                 @if (b.Ref is not null && b.Source != BankSources.EnableBanking)
                                 {
                                     <span>· bank API</span>
@@ -146,7 +150,7 @@
                         </div>
                         <button type="button" class="bank-right" @onclick="() => Toggle(b)"
                                 aria-expanded="@(open ? "true" : "false")" aria-label="@(open ? "Bezárás" : "Részletek, név párosítása")">
-                            <span class="bank-amount @KindClass(b)">@Sign(b)@Fmt.Ft(b.Amount)</span>
+                            <span class="bank-amount @KindClass(b) @(b.Pending ? "pending" : null)">@Sign(b)@Fmt.Ft(b.Amount)</span>
                             <span class="bank-chevron"><Icon Name="chevron-down" Size="18" Class="@(open ? "rotate-180" : null)" /></span>
                         </button>
                         @if (open)

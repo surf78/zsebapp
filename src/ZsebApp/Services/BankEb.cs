@@ -14,7 +14,30 @@ public static class BankEb
     public const string Prefix = "EB1 ";
 
     /// <summary>Egy feldolgozott tétel. <see cref="Amount"/> forintban, pozitív; <see cref="Kind"/> a <see cref="BankKinds"/> szerint.</summary>
-    public sealed record Tx(string Key, string Kind, long Amount, string Currency, DateTime? Date, string Name, string Remittance, long? Balance);
+    public sealed record Tx(string Key, string Kind, long Amount, string Currency, DateTime? Date, string Name, string Remittance, long? Balance, bool Pending = false);
+
+    /// <summary>A jelenleg függő tételek listája: <c>EB1P {"k":[…],"at":"…"}</c>.</summary>
+    public const string PendingListPrefix = "EB1P ";
+
+    public static bool IsPendingList(string? text) => text is not null && text.StartsWith(PendingListPrefix, StringComparison.Ordinal);
+
+    public static (List<string> Keys, DateTime At)? ParsePendingList(string text)
+    {
+        if (!IsPendingList(text)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(text[PendingListPrefix.Length..]);
+            var r = doc.RootElement;
+            var keys = r.TryGetProperty("k", out var k) && k.ValueKind == JsonValueKind.Array
+                ? k.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : [];
+            var at = DateTimeOffset.TryParse(Str(r, "at"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d.LocalDateTime : DateTime.Now;
+            return (keys, at);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Egyenleg-üzenet (minden lekérésnél): <c>EB1B {"b":"17361.00","c":"HUF","t":"ITAV","at":"…"}</c>.</summary>
     public const string BalancePrefix = "EB1B ";
@@ -63,7 +86,7 @@ public static class BankEb
                 ? d : null;
             var currency = Str(r, "c");
             return new Tx(key, kind, Math.Abs(amount.Value), currency.Length == 0 ? "HUF" : currency, date,
-                Tidy(Str(r, "n"), 60), Tidy(Str(r, "r"), 300), Money(r, "b"));
+                Tidy(Str(r, "n"), 60), Tidy(Str(r, "r"), 300), Money(r, "b"), Str(r, "p") == "1");
         }
         catch (JsonException)
         {
@@ -75,7 +98,7 @@ public static class BankEb
     public static string Describe(Tx t)
     {
         var sb = new StringBuilder();
-        sb.Append("K&H (Enable Banking)\n");
+        sb.Append(t.Pending ? "K&H (Enable Banking) – függő, még nincs könyvelve\n" : "K&H (Enable Banking)\n");
         sb.Append(t.Kind).Append('\n');
         sb.Append(t.Kind == BankKinds.Debit ? "-" : t.Kind == BankKinds.Credit ? "+" : "")
           .Append(Money(t.Amount, t.Currency)).Append('\n');

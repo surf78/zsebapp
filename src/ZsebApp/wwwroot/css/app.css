@@ -1252,3 +1252,5 @@ a.action { text-decoration: none; }
 .grade-circle.grade-3 { background: #e7b416; }
 .grade-circle.grade-2 { background: #ef7d1a; }
 .grade-circle.grade-1 { background: #d9302c; }
+.bank-amount.pending { opacity: 0.6; }
+.bank-pending { color: #c76a00; font-weight: 700; }

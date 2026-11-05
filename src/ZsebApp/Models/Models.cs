@@ -59,6 +59,10 @@ public sealed class BankEntry
     public string? Source { get; set; }
     /// <summary>Az Enable Banking tranzakció kulcsa – az EB tételen, és azon az SMS tételen, amelyikkel párba állt.</summary>
     public string? Ref { get; set; }
+    /// <summary>Függő (még nem könyvelt, pl. kártyás zárolás) Enable Banking tétel kulcsa; a könyvelt tétel ehhez kapcsolódik.</summary>
+    public string? PendingRef { get; set; }
+    /// <summary>Még nincs könyvelve (a K&amp;H app már levonja). A könyvelt tétel érkezésekor false lesz.</summary>
+    public bool Pending { get; set; }
 
     public DateTime When => TransactionAt ?? ReceivedAt;
     /// <summary>Csak dátum ismert (az Enable Banking könyvelési napot ad, időpontot nem).</summary>

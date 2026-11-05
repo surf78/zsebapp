@@ -198,10 +198,15 @@ function lekeres_(psu) {
 
     const elso = !props.getProperty('LAST_OK');
     const from = napStr_(new Date(Date.now() - (elso ? ELSO_NAPOK : VISSZA_NAPOK) * 86400000));
-    let kuldott = 0, osszes = 0;
+    let kuldott = 0, osszes = 0, fuggo = 0;
 
     JSON.parse(props.getProperty('ACCOUNTS')).forEach(acc => {
-      const raw = tranzakciok_(acc.uid, from).filter(t => !t.status || t.status === 'BOOK');
+      const all = tranzakciok_(acc.uid, from);
+      const raw = all.filter(t => !t.status || t.status === 'BOOK');
+      // Függő (még nem könyvelt, pl. kártyás zárolás): a K&H app már levonja – a ZsebApp is „függőben” mutatja.
+      const pending = all.filter(t => t.status === 'PDNG' || t.status === 'HOLD')
+        .map(t => tetel_(acc, t)).filter(t => t);
+      pending.forEach(t => { t.p = 1; });
       const withBal = raw.filter(t => t.balance_after_transaction && t.balance_after_transaction.amount !== undefined)
         .sort((a, b) => String(b.booking_date || '').localeCompare(String(a.booking_date || '')))[0];
       const lastBal = withBal ? { amount: String(withBal.balance_after_transaction.amount),
@@ -223,10 +228,18 @@ function lekeres_(psu) {
         jelol_(t.d, t.k);
         kuldott++;
       });
+      // A függők a könyvelt tételek UTÁN mennek (a ZsebApp így a könyvelttel előbb párosítja a függőt).
+      pending.filter(t => !elkuldve_(t.d, 'p' + t.k)).forEach(t => {
+        bekuld_(t);
+        jelol_(t.d, 'p' + t.k);
+      });
+      fuggo += pending.length;
+      // A jelenleg függő tételek listája: amelyik eltűnt belőle és nem könyvelték, azt a ZsebApp törli (visszavont zárolás).
+      fuggoListaBekuld_(acc, pending.map(t => t.k));
     });
 
     takarit_();
-    const msg = new Date().toLocaleString('hu-HU') + ': ' + kuldott + ' új tétel beküldve (' + osszes + ' könyvelt tétel ' + from + ' óta' +
+    const msg = new Date().toLocaleString('hu-HU') + ': ' + kuldott + ' új tétel beküldve (' + osszes + ' könyvelt tétel ' + from + ' óta, ' + fuggo + ' függő' +
       (PSU_ ? ', felhasználói lekérés' : ', háttér-lekérés') + ').';
     props.setProperty('LAST_OK', new Date().toISOString());
     props.setProperty('LAST_RESULT', msg);
@@ -315,6 +328,23 @@ function egyenleg_(uid) {
   }
 }
 
+/** A jelenleg függő tételek kulcsai: EB1P {k: [...], at}. */
+function fuggoListaBekuld_(acc, keys) {
+  const props = PropertiesService.getScriptProperties();
+  const body = { k: keys.slice(0, 50), at: new Date().toISOString() };
+  const url = props.getProperty('INBOX_URL') + '&documentId=ebpnd_' + hash_(acc.uid + '|' + body.at).slice(0, 24);
+  UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({ fields: {
+      text: { stringValue: 'EB1P ' + JSON.stringify(body) },
+      secret: { stringValue: props.getProperty('SECRET') },
+      at: { stringValue: body.at },
+    } }),
+  });
+}
+
 /** Az egyenleg külön üzenetben (minden lekérésnél, akkor is, ha nincs új tétel): EB1B {b, c, t, at}. */
 function egyenlegBekuld_(acc, bal) {
   const props = PropertiesService.getScriptProperties();
@@ -399,7 +429,7 @@ function jwt_() {
 
 function bekuld_(t) {
   const props = PropertiesService.getScriptProperties();
-  const url = props.getProperty('INBOX_URL') + '&documentId=eb_' + t.k;
+  const url = props.getProperty('INBOX_URL') + '&documentId=eb_' + (t.p ? 'p' : '') + t.k;
   const text = 'EB1 ' + JSON.stringify(t);
   const res = UrlFetchApp.fetch(url, {
     method: 'post',

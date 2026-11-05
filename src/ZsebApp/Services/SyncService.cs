@@ -108,6 +108,15 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
                 Log(preview, "Üres szöveg érkezett – a Parancsban a „Parancs bemenete” helyett az üzenet tartalmát kell beküldeni.");
                 return true;
             }
+            if (BankEb.IsPendingList(text))
+            {
+                if (BankEb.ParsePendingList(text) is { } pl)
+                {
+                    var removed = await data.ApplyPendingListAsync(pl.Keys, pl.At);
+                    if (removed > 0) Log("Bank API: függő tételek", $"{removed} visszavont függő tétel törölve");
+                }
+                return true;
+            }
             if (BankEb.IsBalance(text))
             {
                 if (BankEb.ParseBalance(text) is { } bal)
@@ -124,7 +133,7 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
                 var eb = await data.AddBankEbAsync(text, when);
                 Log(tx is null ? preview : $"Bank API: {tx.Name} {tx.Remittance}".Trim(), eb is null
                     ? "Hibás banki tétel – kihagyva."
-                    : eb.Source == BankSources.EnableBanking ? $"Rögzítve (bank API): {eb.Kind}, {Fmt.Ft(eb.Amount)}"
+                    : eb.Source == BankSources.EnableBanking ? $"Rögzítve (bank API{(eb.Pending ? ", függő" : "")}): {eb.Kind}, {Fmt.Ft(eb.Amount)}"
                     : $"Már megvolt SMS-ből – összekapcsolva: {Fmt.Ft(eb.Amount)}");
                 return true;
             }
