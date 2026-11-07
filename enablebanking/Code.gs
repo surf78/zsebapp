@@ -202,6 +202,18 @@ function lekeres_(psu) {
 
     JSON.parse(props.getProperty('ACCOUNTS')).forEach(acc => {
       const all = tranzakciok_(acc.uid, from);
+      // A függő tételeket a bank alapból nem adja – külön kérjük (csak felhasználói lekérésnél, hogy a háttér
+      // napi 4-es kerete ne fogyjon). Ha a bank nem támogatja, csendben kihagyjuk.
+      let pendErr = '';
+      if (PSU_ && !all.some(t => t.status === 'PDNG' || t.status === 'HOLD')) {
+        try {
+          tranzakciok_(acc.uid, from, 'PDNG').forEach(t => { if (!t.status) t.status = 'PDNG'; if (t.status === 'PDNG') all.push(t); });
+        } catch (e) {
+          pendErr = String(e.message || e).slice(0, 200);
+        }
+      }
+      props.setProperty('LAST_PENDING', new Date().toLocaleString('hu-HU') + ': ' +
+        (pendErr ? 'hiba: ' + pendErr : all.filter(t => t.status === 'PDNG' || t.status === 'HOLD').length + ' függő tétel'));
       const raw = all.filter(t => !t.status || t.status === 'BOOK');
       // Függő (még nem könyvelt, pl. kártyás zárolás): a K&H app már levonja – a ZsebApp is „függőben” mutatja.
       const pending = all.filter(t => t.status === 'PDNG' || t.status === 'HOLD')
@@ -291,11 +303,12 @@ function khBank_() {
   return kh;
 }
 
-function tranzakciok_(uid, from) {
+function tranzakciok_(uid, from, status) {
   const all = [];
   let cont = null;
   for (let i = 0; i < 20; i++) {
     let path = '/accounts/' + encodeURIComponent(uid) + '/transactions?date_from=' + from;
+    if (status) path += '&transaction_status=' + status;
     if (cont) path += '&continuation_key=' + encodeURIComponent(cont);
     const r = api_('get', path);
     (r.transactions || []).forEach(t => all.push(t));
@@ -560,6 +573,7 @@ function oldal_(uzenet) {
     ${sor('ZsebApp gomb (Lekérés most)', gomb ? 'figyeli (percenként)' : 'nincs bekapcsolva – nyomd meg az Időzítés bekapcsolása gombot')}
     ${sor('Utolsó lekérés', p.LAST_RESULT || '–')}
     ${sor('Utolsó egyenleg', p.LAST_BALANCE || '–')}
+    ${sor('Függő tételek', p.LAST_PENDING || '–')}
     ${p.LAST_ERROR ? '<p class="err">' + esc_(p.LAST_ERROR) + '</p>' : ''}
   </div>
 
