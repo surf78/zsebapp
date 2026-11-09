@@ -16,11 +16,12 @@
     @if (loaded)
     {
         <div class="meter-picker" role="tablist" aria-label="Mérő kiválasztása">
-            @foreach (var m in MeterTypes.All)
+            @foreach (var (m, i) in MeterTypes.All.Select((m, i) => (m, i)))
             {
                 var last = LastOf(m.Name);
-                <button type="button" role="tab" aria-selected="@(m.Name == meter ? "true" : "false")"
-                        class="meter-card @(m.Name == meter ? "selected" : null)" style="--meter:@m.Color"
+                var open = expanded == m.Name;
+                <button type="button" role="tab" aria-selected="@(m.Name == meter ? "true" : "false")" aria-expanded="@(open ? "true" : "false")"
+                        class="meter-card @(m.Name == meter ? "selected" : null) @(i == 0 && MeterTypes.All.Count % 2 == 1 ? "wide" : null) @(open ? "open" : null)" style="--meter:@m.Color"
                         @onclick="() => Select(m.Name)">
                     <span class="meter-icon"><Icon Name="@m.Icon" Size="20" /></span>
                     <span class="meter-name">@m.Name</span>
@@ -29,48 +30,41 @@
                     {
                         <span class="meter-due @(dl.Urgent ? "urgent" : dl.DoneThisMonth ? "done" : null)">@DeadlineText(dl)</span>
                     }
+                    <span class="meter-chevron"><Icon Name="chevron-down" Size="18" Class="@(open ? "rotate-180" : null)" /></span>
                 </button>
+                @if (open)
+                {
+                    var dl2 = DeadlineOf(m.Name);
+                    <form class="card meter-expand" style="--meter:@m.Color" @onsubmit="SaveDay">
+                        <p class="meter-expand-status">
+                            @if (dl2 is null)
+                            {
+                                <span class="muted">Diktálási határidő még nincs megadva.</span>
+                            }
+                            else
+                            {
+                                <span class="@(dl2.Urgent ? "meter-due urgent" : dl2.DoneThisMonth ? "meter-due done" : null)">
+                                    @(dl2.DoneThisMonth ? "E havi diktálás kész ✓ · következő: " : dl2.Missed ? "Az e havi határidő lejárt · következő: " : "Diktálási határidő: ")@Fmt.TinyDate(dl2.Due)@(dl2.Urgent ? DaysLeft(dl2.Due) : "")
+                                </span>
+                            }
+                        </p>
+                        <div class="meter-deadline-form">
+                            <span>Diktálás minden hónap</span>
+                            <input class="input small-input" inputmode="numeric" maxlength="2" placeholder="pl. 12" @bind="dayText" @bind:event="oninput" aria-label="Diktálási határidő napja" />
+                            <span>. napjáig</span>
+                        </div>
+                        @if (dayError is not null)
+                        {
+                            <p class="error">@dayError</p>
+                        }
+                        <div class="btn-row">
+                            <button type="submit" class="btn">Határidő mentése</button>
+                            <button type="button" class="btn primary" @onclick="NewReading">Új leolvasás</button>
+                        </div>
+                    </form>
+                }
             }
         </div>
-
-        <section class="card meter-deadline-card">
-            @if (editingDay)
-            {
-                <form class="meter-deadline-form" @onsubmit="SaveDay">
-                    <span>@Type.Name – diktálás minden hónap</span>
-                    <input class="input small-input" inputmode="numeric" maxlength="2" placeholder="pl. 12" @bind="dayText" @bind:event="oninput" aria-label="Diktálási határidő napja" />
-                    <span>. napjáig</span>
-                    <div class="btn-row">
-                        <button type="button" class="btn" @onclick="() => editingDay = false">Mégse</button>
-                        <button type="submit" class="btn primary">Mentés</button>
-                    </div>
-                    @if (dayError is not null)
-                    {
-                        <p class="error">@dayError</p>
-                    }
-                </form>
-            }
-            else
-            {
-                var dl = DeadlineOf(meter);
-                <button type="button" class="meter-deadline-row tappable-area" @onclick="StartEditDay">
-                    <span class="meter-deadline-text">
-                        @if (dl is null)
-                        {
-                            <span class="muted">Diktálási határidő: nincs megadva – koppints a beállításhoz</span>
-                        }
-                        else
-                        {
-                            <span class="@(dl.Urgent ? "meter-due urgent" : null)">
-                                @(dl.DoneThisMonth ? "E havi diktálás kész ✓ · következő: " : dl.Missed ? "Az e havi határidő lejárt · következő: " : "Diktálási határidő: ")@Fmt.TinyDate(dl.Due)@(dl.Urgent ? DaysLeft(dl.Due) : "")
-                            </span>
-                            <span class="muted"> (minden hónap @DayOf(meter). napjáig)</span>
-                        }
-                    </span>
-                    <Icon Name="edit" Size="18" />
-                </button>
-            }
-        </section>
 
         @if (showForm)
         {
@@ -209,16 +203,27 @@
     private static string Percent(decimal part, decimal max) =>
         max <= 0 ? "2" : Math.Max(2, Math.Round(part * 100 / max, 1)).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>Koppintás a mérőre: kiválasztja és lenyitja (újra koppintva becsukja) a szerkesztőt.</summary>
     private void Select(string name)
     {
+        expanded = expanded == name ? null : name;
         meter = name;
         error = null;
-        editingDay = false;
+        dayError = null;
+        dayText = DayOf(name)?.ToString() ?? "";
+    }
+
+    private string? expanded;
+
+    private void NewReading()
+    {
+        showForm = true;
+        error = null;
+        expanded = null;
     }
 
     // ---------- Diktálási határidő ----------
 
-    private bool editingDay;
     private string dayText = "";
     private string? dayError;
 
@@ -250,13 +255,6 @@
         var n => $" – {n} nap!",
     };
 
-    private void StartEditDay()
-    {
-        dayText = DayOf(meter)?.ToString() ?? "";
-        dayError = null;
-        editingDay = true;
-    }
-
     private async Task SaveDay()
     {
         var list = Data.Settings.MeterDeadlines;
@@ -279,7 +277,6 @@
             list.Add(new MeterDeadline { Meter = meter, Day = d });
         }
         await Data.SaveSettingsAsync();
-        editingDay = false;
         dayError = null;
     }
 

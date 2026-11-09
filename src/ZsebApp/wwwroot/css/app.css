@@ -612,7 +612,8 @@ input, textarea { font-size: 17px; }
 /* ---------- Mérőórák ---------- */
 .meter-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
 /* Páratlan számú mérőnél az első (Gáz) teljes szélességű, a többi párban. */
-.meter-picker .meter-card:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+.meter-picker .meter-card.wide { grid-column: 1 / -1; }
+.meter-picker { grid-auto-flow: dense; }
 
 .meter-card {
     display: flex;
@@ -1274,3 +1275,10 @@ a.action { text-decoration: none; }
 .meter-deadline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .meter-deadline-form .small-input { width: 64px; }
 .meter-deadline-form .btn-row { width: 100%; }
+
+.meter-card { position: relative; }
+.meter-chevron { position: absolute; top: 12px; right: 12px; color: var(--muted); }
+.meter-expand { grid-column: 1 / -1; margin: 0; padding: 14px; border: 2px solid var(--meter); display: flex; flex-direction: column; gap: 10px; }
+.meter-expand-status { margin: 0; font-size: 0.95rem; }
+.meter-expand .btn-row { margin: 0; }
+.meter-expand-status .meter-due { font-size: inherit; }
