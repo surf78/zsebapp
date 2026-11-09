@@ -195,7 +195,7 @@
                                         }
                                         else if (r.DueDate is { } due)
                                         {
-                                            <span>határidő: @Fmt.TinyDate(due)</span>
+                                            <span class="@(r.IsDueSoon ? "due-soon" : null)">határidő: @Fmt.TinyDate(due)</span>
                                         }
                                         @if (r.IsVirtual)
                                         {

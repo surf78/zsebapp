@@ -10,6 +10,8 @@ public sealed record BillRow(Bill? Bill, BillTemplate? Template, string Group, s
 {
     public bool IsVirtual => Bill is null;
     public bool IsOverdue => !Paid && DueDate is { } d && d < Period.Today;
+    /// <summary>Rendezetlen, és a határidő 3 napon belül van (ma is beleértve).</summary>
+    public bool IsDueSoon => !Paid && DueDate is { } d && d >= Period.Today && d <= Period.Today.AddDays(3);
     public string Key => Bill?.Id.ToString() ?? "t-" + Template!.Id;
 
     /// <summary>Túlfizetés (csak fizetett számlánál).</summary>

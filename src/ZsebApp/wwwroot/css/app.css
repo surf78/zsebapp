@@ -828,6 +828,8 @@ a.action { text-decoration: none; }
 .bill-row.virtual .bill-name { color: var(--muted); }
 .bill-row.virtual .amount { color: var(--muted); font-weight: 600; }
 .overdue { color: var(--unpaid); font-weight: 800; }
+.due-soon { color: #e07800; font-weight: 800; }
+@media (prefers-color-scheme: dark) { .due-soon { color: #ffa53a; } }
 
 .check-row { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
 .check-row input { width: 22px; height: 22px; accent-color: #0a8fc4; }
