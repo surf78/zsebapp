@@ -222,7 +222,10 @@ async function processInbox() {
     if (!ready) return;
     S.inboxBusy = true;
     try {
-        for (const [id, v] of Array.from(S.inbox.entries())) {
+        // Időrendben (az „at” szerint), nem a dokumentum-azonosító szerint: így pl. az Apple Pay fizetés
+        // a később lekért bank API tétele előtt kerül be, és az ahhoz kapcsolódik.
+        const items = Array.from(S.inbox.entries()).sort((a, b) => String(a[1].at || '').localeCompare(String(b[1].at || '')));
+        for (const [id, v] of items) {
             if (v.done) continue;
             const hid = S.hid;
             try {

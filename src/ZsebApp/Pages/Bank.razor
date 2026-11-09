@@ -281,6 +281,7 @@
     protected override async Task OnInitializedAsync()
     {
         await Data.EnsureLoadedAsync();
+        await Data.RepairBankDuplicatesAsync();   // a korábban duplán bekerült tételek összevonása
         loaded = true;
     }
 

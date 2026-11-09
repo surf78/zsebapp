@@ -97,6 +97,24 @@ public sealed class SyncService(IJSRuntime js, AppData data) : IDisposable
     [JSInvokable]
     public async Task<bool> OnSmsInbox(string id, string text, string? at)
     {
+        var ok = await ProcessInboxItem(id, text, at);
+        if (ok)
+        {
+            try
+            {
+                var n = await data.RepairBankDuplicatesAsync();
+                if (n > 0) Log("Bank napló", $"{n} dupla tétel összevonva");
+            }
+            catch (Exception ex)
+            {
+                Log("Bank napló", "Dupla tételek javítása sikertelen: " + ex.Message);
+            }
+        }
+        return ok;
+    }
+
+    private async Task<bool> ProcessInboxItem(string id, string text, string? at)
+    {
         DateTime? when = DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.None, out var dto) ? dto.LocalDateTime : null;
         var preview = (text ?? "").Replace('\n', ' ').Trim();

@@ -476,7 +476,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         // Ha ugyanez a tétel már megjött az Enable Bankingtől, ez csak kiegészíti (pontos idő, friss egyenleg).
         var twin = Bank
             .Where(b => b.Source == BankSources.EnableBanking && !b.Text.Contains(MarkStart)
-                        && !Bank.Any(o => o.Source != BankSources.EnableBanking && o.Ref == b.Ref) && IsNear(b, p.Kind, p.Amount, when))
+                        && !IsEbKeyClaimed(b) && IsNear(b, p.Kind, p.Amount, when))
             .OrderBy(b => Math.Abs((b.When.Date - when.Date).TotalDays))
             .FirstOrDefault()
             // Vagy egy másik azonnali csatornán (SMS / Apple Pay / push) jött már meg, fél órán belül.
@@ -689,6 +689,47 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Settings.BankBalanceAt = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
         await SaveSettingsAsync();
         Changed?.Invoke();
+    }
+
+    /// <summary>A bank API tétel kulcsát (könyvelt vagy függő) már egy SMS / Apple Pay / push tétel viseli-e.</summary>
+    private bool IsEbKeyClaimed(BankEntry eb)
+    {
+        var key = eb.Ref ?? eb.PendingRef;
+        return key is not null && Bank.Any(o => o.Source != BankSources.EnableBanking && (o.Ref == key || o.PendingRef == key));
+    }
+
+    /// <summary>
+    /// Dupla tételek javítása: ha egy bank API tétel (könyvelt vagy függő) és egy még párosítatlan SMS / Apple Pay / push
+    /// tétel ugyanarról szól (azonos irány és összeg, legfeljebb 2 nap eltérés), a bank API kulcsa átkerül az azonnali
+    /// tételre (az pontosabb: idő, név), a bank API tétel pedig a kiadásával együtt törlődik.
+    /// </summary>
+    public async Task<int> RepairBankDuplicatesAsync()
+    {
+        var fixedCount = 0;
+        foreach (var eb in Bank.Where(b => b.Source == BankSources.EnableBanking && !b.Text.Contains(MarkStart)).ToList())
+        {
+            if (IsEbKeyClaimed(eb)) continue;
+            var q = Bank
+                .Where(o => o.Source != BankSources.EnableBanking && o.Ref is null && o.PendingRef is null
+                            && o.Kind == eb.Kind && o.Amount == eb.Amount && Math.Abs((o.When.Date - eb.When.Date).TotalDays) <= 2)
+                .OrderBy(o => Math.Abs((o.When.Date - eb.When.Date).TotalDays))
+                .FirstOrDefault();
+            if (q is null) continue;
+            q.Ref = eb.Ref;
+            q.PendingRef = eb.PendingRef;
+            q.Pending = eb.Pending;
+            q.Balance ??= eb.Balance;
+            Bank.Remove(eb);
+            if (eb.ExpenseId is { } eid && eid != q.ExpenseId) Expenses.RemoveAll(e => e.Id == eid);
+            fixedCount++;
+        }
+        if (fixedCount > 0)
+        {
+            await SaveExpensesAsync();
+            await SaveBankAsync();
+            Changed?.Invoke();
+        }
+        return fixedCount;
     }
 
     /// <summary>Ugyanaz a tranzakció lehet: azonos irány és összeg, legfeljebb 4 nap eltérés (a kártyás tételt később könyvelik).</summary>
