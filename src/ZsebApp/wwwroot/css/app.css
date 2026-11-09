@@ -1254,3 +1254,8 @@ a.action { text-decoration: none; }
 .grade-circle.grade-1 { background: #d9302c; }
 .bank-amount.pending { opacity: 0.6; }
 .bank-pending { color: #c76a00; font-weight: 700; }
+
+/* Számla szerkesztése a sor alatt */
+.bill-inline-editor { list-style: none; padding: 4px 0 10px; }
+.bill-inline-editor .form.inline { margin: 0; box-shadow: none; background: rgba(255, 255, 255, 0.35); }
+@media (prefers-color-scheme: dark) { .bill-inline-editor .form.inline { background: rgba(0, 0, 0, 0.2); } }

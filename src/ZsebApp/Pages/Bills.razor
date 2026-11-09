@@ -18,93 +18,9 @@
     }
     else
     {
-        @if (editorOpen)
+        @if (editorOpen && inlineKey is null)
         {
-            <form class="card form" @onsubmit="Save">
-                <p class="form-title">@EditorTitle</p>
-
-                <div class="field">
-                    <span>Csoport</span>
-                    <div class="chips">
-                        @foreach (var g in AllGroups)
-                        {
-                            <button type="button" class="chip neutral @(!fNewGroupMode && Same(g, fGroup) ? "selected" : null)"
-                                    @onclick="() => { fGroup = g; fNewGroupMode = false; }">
-                                @g
-                            </button>
-                        }
-                        <button type="button" class="chip neutral @(fNewGroupMode ? "selected" : null)" @onclick="() => fNewGroupMode = true">
-                            + Új csoport
-                        </button>
-                    </div>
-                    @if (fNewGroupMode)
-                    {
-                        <input class="input" placeholder="Új csoport neve, pl. Nyaraló" maxlength="40" @bind="fNewGroup" @bind:event="oninput" />
-                    }
-                </div>
-
-                <label class="field">
-                    <span>Megnevezés</span>
-                    <input class="input" placeholder="pl. Gázszámla" maxlength="80" @bind="fName" @bind:event="oninput" />
-                </label>
-
-                <label class="field">
-                    <span>Összeg (Ft)</span>
-                    <input class="input amount-input" type="text" inputmode="numeric" pattern="[0-9 ]*"
-                           placeholder="0" maxlength="12" @bind="fAmount" @bind:event="oninput" />
-                </label>
-
-                <div class="field-row">
-                    <label class="field grow">
-                        <span>Fizetési határidő</span>
-                        <input class="input date-input" type="date" @bind="fDue" @bind:format="yyyy-MM-dd" />
-                    </label>
-                    <label class="field">
-                        <span>Hónap</span>
-                        <input class="input date-input" type="month" value="@fMonth" @onchange="e => fMonth = e.Value?.ToString() ?? fMonth" />
-                    </label>
-                </div>
-
-                <div class="field">
-                    <span>Állapot</span>
-                    <div class="segmented" role="radiogroup" aria-label="Állapot">
-                        <button type="button" role="radio" aria-checked="@(!fPaid ? "true" : "false")"
-                                class="seg unpaid @(!fPaid ? "selected" : null)" @onclick="() => { fPaid = false; fOverpaid = false; }">
-                            Rendezetlen
-                        </button>
-                        <button type="button" role="radio" aria-checked="@(fPaid && !fOverpaid ? "true" : "false")"
-                                class="seg paid @(fPaid && !fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = false; }">
-                            Fizetve
-                        </button>
-                        <button type="button" role="radio" aria-checked="@(fPaid && fOverpaid ? "true" : "false")"
-                                class="seg paid @(fPaid && fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = true; }">
-                            Túlfizetés
-                        </button>
-                    </div>
-                </div>
-
-                @if (editing is null && fromTemplate is null)
-                {
-                    <label class="check-row">
-                        <input type="checkbox" @bind="fRecurring" />
-                        <span>Fix tétel – minden hónapban jelenjen meg</span>
-                    </label>
-                }
-
-                @if (fError is not null)
-                {
-                    <p class="error">@fError</p>
-                }
-
-                <button type="submit" class="btn primary block">Mentés</button>
-                <div class="btn-row">
-                    @if (editing is not null)
-                    {
-                        <button type="button" class="btn danger" @onclick="DeleteEditing">Törlés</button>
-                    }
-                    <button type="button" class="btn" @onclick="CloseEditor">Mégse</button>
-                </div>
-            </form>
+            @EditorForm(null)
         }
 
         <section class="card filter-body report-period">
@@ -292,13 +208,17 @@
                                     </div>
                                 </div>
                                 <div class="bill-right">
-                                    <span class="amount">@(r.Amount > 0 ? Fmt.Ft(r.Amount) : "– Ft")</span>
+                                    <span class="amount tappable-area" @onclick="() => OpenRow(r, m.MonthKey)">@(r.Amount > 0 ? Fmt.Ft(r.Amount) : "– Ft")</span>
                                     <button class="status-pill @(r.Paid ? "paid" : "unpaid") @(r.Overpaid ? "overpaid" : null)" @onclick="() => TogglePaid(r, m.MonthKey)"
                                             aria-label="@($"{r.StatusText} – koppints a következő állapotra (Rendezetlen → Fizetve → Túlfizetés)")">
                                         @r.StatusText
                                     </button>
                                 </div>
                             </li>
+                            @if (editorOpen && inlineKey == RowKey(m.MonthKey, r))
+                            {
+                                <li class="bill-inline-editor" @key="@("ed|" + r.Key)">@EditorForm("inline")</li>
+                            }
                         }
                     </ul>
                 }
@@ -307,7 +227,7 @@
 
         @if (allRows.Count > 0)
         {
-            <p class="hint">A sorra koppintva szerkesztheted a számlát, az állapotra koppintva Rendezetlen és Fizetve között válthatsz.</p>
+            <p class="hint">A sorra vagy az összegre koppintva szerkesztheted a számla összegét és határidejét (a fix tételeknél is, adott hónapra), az állapotra koppintva Rendezetlen és Fizetve között válthatsz.</p>
         }
 
         @* ---------- Fix tételek kezelése ---------- *@
@@ -452,6 +372,99 @@
             ? [BillViews.Month(Data.Bills, Data.BillTemplates, ViewMonthKey, group)]
             : BillViews.Range(Data.Bills, Data.BillTemplates, period, group);
 
+    private RenderFragment EditorForm(string? cls) =>
+        @<text>
+            <form class="card form @cls" @onsubmit="Save">
+                <p class="form-title">@EditorTitle</p>
+
+                <div class="field">
+                    <span>Csoport</span>
+                    <div class="chips">
+                        @foreach (var g in AllGroups)
+                        {
+                            <button type="button" class="chip neutral @(!fNewGroupMode && Same(g, fGroup) ? "selected" : null)"
+                                    @onclick="() => { fGroup = g; fNewGroupMode = false; }">
+                                @g
+                            </button>
+                        }
+                        <button type="button" class="chip neutral @(fNewGroupMode ? "selected" : null)" @onclick="() => fNewGroupMode = true">
+                            + Új csoport
+                        </button>
+                    </div>
+                    @if (fNewGroupMode)
+                    {
+                        <input class="input" placeholder="Új csoport neve, pl. Nyaraló" maxlength="40" @bind="fNewGroup" @bind:event="oninput" />
+                    }
+                </div>
+
+                <label class="field">
+                    <span>Megnevezés</span>
+                    <input class="input" placeholder="pl. Gázszámla" maxlength="80" @bind="fName" @bind:event="oninput" />
+                </label>
+
+                <label class="field">
+                    <span>Összeg (Ft)</span>
+                    <input class="input amount-input" type="text" inputmode="numeric" pattern="[0-9 ]*"
+                           placeholder="0" maxlength="12" @bind="fAmount" @bind:event="oninput" />
+                </label>
+
+                <div class="field-row">
+                    <label class="field grow">
+                        <span>Fizetési határidő</span>
+                        <input class="input date-input" type="date" @bind="fDue" @bind:format="yyyy-MM-dd" />
+                    </label>
+                    <label class="field">
+                        <span>Hónap</span>
+                        <input class="input date-input" type="month" value="@fMonth" @onchange="e => fMonth = e.Value?.ToString() ?? fMonth" />
+                    </label>
+                </div>
+
+                <div class="field">
+                    <span>Állapot</span>
+                    <div class="segmented" role="radiogroup" aria-label="Állapot">
+                        <button type="button" role="radio" aria-checked="@(!fPaid ? "true" : "false")"
+                                class="seg unpaid @(!fPaid ? "selected" : null)" @onclick="() => { fPaid = false; fOverpaid = false; }">
+                            Rendezetlen
+                        </button>
+                        <button type="button" role="radio" aria-checked="@(fPaid && !fOverpaid ? "true" : "false")"
+                                class="seg paid @(fPaid && !fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = false; }">
+                            Fizetve
+                        </button>
+                        <button type="button" role="radio" aria-checked="@(fPaid && fOverpaid ? "true" : "false")"
+                                class="seg paid @(fPaid && fOverpaid ? "selected" : null)" @onclick="() => { fPaid = true; fOverpaid = true; }">
+                            Túlfizetés
+                        </button>
+                    </div>
+                </div>
+
+                @if (editing is null && fromTemplate is null)
+                {
+                    <label class="check-row">
+                        <input type="checkbox" @bind="fRecurring" />
+                        <span>Fix tétel – minden hónapban jelenjen meg</span>
+                    </label>
+                }
+
+                @if (fError is not null)
+                {
+                    <p class="error">@fError</p>
+                }
+
+                <button type="submit" class="btn primary block">Mentés</button>
+                <div class="btn-row">
+                    @if (editing is not null)
+                    {
+                        <button type="button" class="btn danger" @onclick="DeleteEditing">Törlés</button>
+                    }
+                    <button type="button" class="btn" @onclick="CloseEditor">Mégse</button>
+                </div>
+            </form>
+        </text>;
+
+    private string? inlineKey;
+
+    private static string RowKey(string monthKey, BillRow r) => monthKey + "|" + r.Key;
+
     private string EditorTitle =>
         editing is not null ? "Számla szerkesztése"
         : fromTemplate is not null ? $"{fromTemplate.Name} – {BillViews.MonthTitle(fMonth)}"
@@ -478,6 +491,7 @@
     {
         editing = null;
         fromTemplate = null;
+        inlineKey = null;
         fGroup = group ?? BillDefaults.OtherGroup;
         fNewGroupMode = false;
         fNewGroup = "";
@@ -510,6 +524,11 @@
 
     private void OpenRow(BillRow r, string monthKey)
     {
+        if (editorOpen && inlineKey == RowKey(monthKey, r))
+        {
+            CloseEditor();
+            return;
+        }
         ResetEditor();
         if (r.Bill is { } b)
         {
@@ -531,6 +550,8 @@
             fDue = r.DueDate;   // az előző hónap határideje továbbvive (vagy a fix tétel határidő-napja)
             fMonth = monthKey;
         }
+        inlineKey = RowKey(monthKey, r);
+        if (IsCollapsed(r.Group)) collapsedGroups[r.Group] = false;   // a szerkesztő a sor alatt nyílik, látszódjon
         editorOpen = true;
     }
 
@@ -550,9 +571,10 @@
             return;
         }
 
-        if (ParseAmount(fAmount) is not { } amount || amount <= 0)
+        var amount = ParseAmount(fAmount) ?? 0;
+        if (amount <= 0 && fPaid)
         {
-            fError = "Adj meg egy 0-nál nagyobb összeget.";
+            fError = "Fizetett számlához adj meg egy 0-nál nagyobb összeget.";
             return;
         }
 
