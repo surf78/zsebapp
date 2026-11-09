@@ -25,9 +25,52 @@
                     <span class="meter-icon"><Icon Name="@m.Icon" Size="20" /></span>
                     <span class="meter-name">@m.Name</span>
                     <span class="meter-last">@(last is null ? "–" : $"{Fmt.Number(last.Value, 1)} {m.Unit}")</span>
+                    @if (DeadlineOf(m.Name) is { } dl)
+                    {
+                        <span class="meter-due @(dl.Urgent ? "urgent" : dl.DoneThisMonth ? "done" : null)">@DeadlineText(dl)</span>
+                    }
                 </button>
             }
         </div>
+
+        <section class="card meter-deadline-card">
+            @if (editingDay)
+            {
+                <form class="meter-deadline-form" @onsubmit="SaveDay">
+                    <span>@Type.Name – diktálás minden hónap</span>
+                    <input class="input small-input" inputmode="numeric" maxlength="2" placeholder="pl. 12" @bind="dayText" @bind:event="oninput" aria-label="Diktálási határidő napja" />
+                    <span>. napjáig</span>
+                    <div class="btn-row">
+                        <button type="button" class="btn" @onclick="() => editingDay = false">Mégse</button>
+                        <button type="submit" class="btn primary">Mentés</button>
+                    </div>
+                    @if (dayError is not null)
+                    {
+                        <p class="error">@dayError</p>
+                    }
+                </form>
+            }
+            else
+            {
+                var dl = DeadlineOf(meter);
+                <button type="button" class="meter-deadline-row tappable-area" @onclick="StartEditDay">
+                    <span class="meter-deadline-text">
+                        @if (dl is null)
+                        {
+                            <span class="muted">Diktálási határidő: nincs megadva – koppints a beállításhoz</span>
+                        }
+                        else
+                        {
+                            <span class="@(dl.Urgent ? "meter-due urgent" : null)">
+                                @(dl.DoneThisMonth ? "E havi diktálás kész ✓ · következő: " : dl.Missed ? "Az e havi határidő lejárt · következő: " : "Diktálási határidő: ")@Fmt.TinyDate(dl.Due)@(dl.Urgent ? DaysLeft(dl.Due) : "")
+                            </span>
+                            <span class="muted"> (minden hónap @DayOf(meter). napjáig)</span>
+                        }
+                    </span>
+                    <Icon Name="edit" Size="18" />
+                </button>
+            }
+        </section>
 
         @if (showForm)
         {
@@ -170,6 +213,74 @@
     {
         meter = name;
         error = null;
+        editingDay = false;
+    }
+
+    // ---------- Diktálási határidő ----------
+
+    private bool editingDay;
+    private string dayText = "";
+    private string? dayError;
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    private int? DayOf(string name) => Data.Settings.MeterDeadlines.FirstOrDefault(x => x.Meter == name)?.Day;
+
+    private MeterDeadlineState? DeadlineOf(string name) => MeterMath.Deadline(Data.Meters, name, DayOf(name), Today);
+
+    private static string DeadlineText(MeterDeadlineState dl) =>
+        dl.DoneThisMonth ? $"diktálva ✓ · {Fmt.TinyDate(dl.Due)}"
+        : dl.Urgent ? $"diktálás: {Ig(dl.Due)} · {DaysWord(dl.Due)}"
+        : $"diktálás: {Ig(dl.Due)}";
+
+    /// <summary>„nov. 11-ig”.</summary>
+    private static string Ig(DateOnly d) => Fmt.TinyDate(d).TrimEnd('.') + "-ig";
+
+    private static string DaysWord(DateOnly due) => (due.DayNumber - Today.DayNumber) switch
+    {
+        0 => "ma!",
+        1 => "holnap!",
+        var n => $"{n} nap!",
+    };
+
+    private static string DaysLeft(DateOnly due) => (due.DayNumber - Today.DayNumber) switch
+    {
+        0 => " – ma!",
+        1 => " – holnap!",
+        var n => $" – {n} nap!",
+    };
+
+    private void StartEditDay()
+    {
+        dayText = DayOf(meter)?.ToString() ?? "";
+        dayError = null;
+        editingDay = true;
+    }
+
+    private async Task SaveDay()
+    {
+        var list = Data.Settings.MeterDeadlines;
+        var t = dayText.Trim();
+        if (t.Length == 0)
+        {
+            list.RemoveAll(x => x.Meter == meter);
+        }
+        else if (!int.TryParse(t, out var d) || d is < 1 or > 31)
+        {
+            dayError = "1 és 31 közötti napot adj meg (üresen hagyva törlődik).";
+            return;
+        }
+        else if (list.FirstOrDefault(x => x.Meter == meter) is { } existing)
+        {
+            existing.Day = d;
+        }
+        else
+        {
+            list.Add(new MeterDeadline { Meter = meter, Day = d });
+        }
+        await Data.SaveSettingsAsync();
+        editingDay = false;
+        dayError = null;
     }
 
     private void ToggleForm()

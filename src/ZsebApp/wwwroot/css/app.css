@@ -1261,3 +1261,16 @@ a.action { text-decoration: none; }
 .bill-inline-editor { list-style: none; padding: 4px 0 10px; }
 .bill-inline-editor .form.inline { margin: 0; box-shadow: none; background: rgba(255, 255, 255, 0.35); }
 @media (prefers-color-scheme: dark) { .bill-inline-editor .form.inline { background: rgba(0, 0, 0, 0.2); } }
+
+/* Mérőórák: diktálási határidő */
+.meter-due { font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.meter-due.urgent { color: var(--unpaid); font-weight: 800; }
+.meter-due.done { color: var(--paid, #2e9d4f); }
+.meter-card .meter-due { display: block; margin-top: 2px; }
+.meter-deadline-card { padding: 12px 14px; }
+.meter-deadline-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; }
+.meter-deadline-text { flex: 1; font-size: 0.92rem; line-height: 1.35; }
+.meter-deadline-text .meter-due.urgent { font-size: inherit; }
+.meter-deadline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.meter-deadline-form .small-input { width: 64px; }
+.meter-deadline-form .btn-row { width: 100%; }

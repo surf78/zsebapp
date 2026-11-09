@@ -204,6 +204,16 @@ public sealed class AppSettings
     /// <summary>A K&amp;H számla legutóbbi egyenlege a bank API-ból (Enable Banking, minden lekérésnél), és mikor kértük le.</summary>
     public long? BankBalance { get; set; }
     public DateTime? BankBalanceAt { get; set; }
+
+    /// <summary>Mérőórák diktálási határideje (minden hónap N. napjáig). Régi beállításokban nincs – üres lista.</summary>
+    public List<MeterDeadline> MeterDeadlines { get; set; } = [];
+}
+
+/// <summary>Egy mérő diktálási határideje: minden hónap <see cref="Day"/>. napjáig (a hónapnál rövidebb hónapban az utolsó nap).</summary>
+public sealed class MeterDeadline
+{
+    public string Meter { get; set; } = "";
+    public int Day { get; set; }
 }
 
 /// <summary>Mérőóra-leolvasás, pl. Gáz – 12 345,678 m³ – 2026.10.21.</summary>

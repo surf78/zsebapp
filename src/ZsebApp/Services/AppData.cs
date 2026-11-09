@@ -56,6 +56,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         Settings = await store.GetAsync(SettingsKey, AppJsonContext.Default.AppSettings) ?? new();
         Settings.TodoGroups ??= [];
         Settings.BankAliases ??= [];
+        Settings.MeterDeadlines ??= [];
         await store.RemoveAsync(CurrentTodoGroupKey);   // régi verzióból maradt
 
         // Fix tételek: első indításkor (vagy teljes törlés után) az alapértelmezett lista.
@@ -239,6 +240,7 @@ public sealed class AppData(LocalStore store, IJSRuntime js)
         {
             incoming.TodoGroups ??= [];
             incoming.BankAliases ??= [];
+            incoming.MeterDeadlines ??= [];
             Settings = incoming;
         }
         var result = JsonSerializer.Serialize(Settings, AppJsonContext.Default.AppSettings);

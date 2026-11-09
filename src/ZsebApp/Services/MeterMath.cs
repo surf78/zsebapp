@@ -61,4 +61,26 @@ public static class MeterMath
 
         return null;
     }
+
+    /// <summary>
+    /// A diktálás állapota: a következő határidő, hogy ebben a hónapban már van-e leolvasás, és hogy sürgős-e
+    /// (a határidő 3 napon belül van, utána már nem lehet diktálni).
+    /// </summary>
+    public static MeterDeadlineState? Deadline(IEnumerable<MeterReading> all, string meter, int? day, DateOnly today)
+    {
+        if (day is not (>= 1 and <= 31) || day is not { } d) return null;
+        var first = new DateOnly(today.Year, today.Month, 1);
+        var thisDue = DueIn(first, d);
+        var read = all.Any(r => r.Meter == meter && r.Date >= first && r.Date <= today);
+        if (read || today > thisDue)
+            return new MeterDeadlineState(DueIn(first.AddMonths(1), d), read, !read, false);
+        return new MeterDeadlineState(thisDue, false, false, thisDue.DayNumber - today.DayNumber <= 3);
+    }
+
+    private static DateOnly DueIn(DateOnly monthFirst, int day) =>
+        new(monthFirst.Year, monthFirst.Month, Math.Min(day, DateTime.DaysInMonth(monthFirst.Year, monthFirst.Month)));
 }
+
+/// <summary><see cref="Due"/>: a következő diktálási határidő; <see cref="DoneThisMonth"/>: ebben a hónapban már diktált;
+/// <see cref="Missed"/>: az e havi határidő leolvasás nélkül telt el; <see cref="Urgent"/>: 3 napon belül lejár.</summary>
+public sealed record MeterDeadlineState(DateOnly Due, bool DoneThisMonth, bool Missed, bool Urgent);
